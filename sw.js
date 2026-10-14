@@ -1,12 +1,7 @@
-const CACHE_NAME = 'favu-app-v127-gastos-nova-marca-so-outros';
+const CACHE_NAME = 'favu-app-v143-itens-congelados';
 const urlsToCache = [
   './',
   './index.html',
-  './cardapio.html',
-  './style.css',
-  './style-cardapio.css',
-  './script.js',
-  './script-cardapio.js',
   './admin.js',
   './manifest.json',
   './images/favu.png'

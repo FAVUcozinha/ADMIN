@@ -15,6 +15,10 @@ const app = initializeApp({
 const db = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app);
+// CORREÇÃO (upload travando): por padrão o SDK do Storage fica tentando reenviar
+// por até 10 minutos quando a requisição falha (ex.: bloqueio de CORS). Isso
+// deixava o botão de salvar "carregando eternamente". Limitamos a 15s.
+try { storage.maxUploadRetryTime = 15000; storage.maxOperationRetryTime = 15000; } catch (e) {}
 
 let globalCategories = [];
 let allProducts = [];
@@ -315,10 +319,22 @@ window.fileToDataURL = function(file) {
     });
 };
 
-// Enquanto o CORS do Firebase Storage não estiver corrigido, deixe false.
-// Assim as imagens são salvas diretamente no Firestore como Base64 e o site volta a funcionar sem erro de CORS.
-// Depois de aplicar o cors.json no bucket, você pode trocar para true.
-const USAR_FIREBASE_STORAGE = false;
+// OTIMIZAÇÃO DE PERFORMANCE (importante): agora tentamos sempre subir a imagem
+// para o Firebase Storage primeiro. Isso é essencial para a lentidão do app,
+// porque salvar imagens como Base64 direto no Firestore (o que estava
+// acontecendo antes, com essa flag em false) faz cada leitura de produtos/
+// categorias/avisos trazer o texto completo das fotos embutido no documento,
+// deixando as consultas e a tela muito mais pesadas do que precisam ser.
+//
+// Este código é seguro mesmo que o CORS do bucket ainda não tenha sido
+// configurado: se o upload para o Storage falhar (ver catch abaixo), ele cai
+// automaticamente para o Base64 no Firestore, exatamente como funcionava
+// antes — ou seja, nada quebra. Mas para colher o ganho de performance de
+// verdade, é necessário aplicar o arquivo cors.json (que já está neste
+// projeto) no bucket "favu-app.firebasestorage.app", por exemplo com:
+//   gsutil cors set cors.json gs://favu-app.firebasestorage.app
+// Isso pode ser feito pelo Google Cloud Shell, sem precisar instalar nada.
+const USAR_FIREBASE_STORAGE = true;
 
 async function salvarImagemBase64(compressedFile) {
     const dataUrl = await window.fileToDataURL(compressedFile);
@@ -354,19 +370,36 @@ async function upImg(file) {
         }
     }
 
-    // MODO STORAGE: use somente depois de aplicar corretamente o CORS no bucket.
+    // Se o Storage já falhou nesta sessão, vai direto para o Base64 (não espera de novo).
+    if (window.__storageIndisponivel) {
+        try {
+            return await salvarImagemBase64(compressedFile);
+        } catch (fallbackError) {
+            console.error("Falha ao salvar imagem em Base64:", fallbackError);
+            customAlert("Erro ao salvar imagem. Tente uma imagem menor ou mais leve.", "Erro no upload");
+            throw fallbackError;
+        }
+    }
+
+    // MODO STORAGE: com limite de tempo, para nunca travar o salvamento.
     try {
         const safeName = compressedFile.name || `imagem_${Date.now()}.jpg`;
         const filename = `imagens/${Date.now()}_${safeName}`;
         const storageRef = ref(storage, filename);
 
-        const snapshot = await uploadBytes(storageRef, compressedFile, {
-            contentType: 'image/jpeg',
-            cacheControl: 'public,max-age=31536000'
-        });
+        const comTimeout = (promise, ms) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(`Tempo esgotado (${ms / 1000}s) no Firebase Storage`)), ms))
+        ]);
 
-        return await getDownloadURL(snapshot.ref);
+        const snapshot = await comTimeout(uploadBytes(storageRef, compressedFile, {
+            contentType: compressedFile.type || 'image/jpeg',
+            cacheControl: 'public,max-age=31536000'
+        }), 20000);
+
+        return await comTimeout(getDownloadURL(snapshot.ref), 10000);
     } catch (storageError) {
+        window.__storageIndisponivel = true;
         console.warn("Firebase Storage bloqueou o upload. Usando fallback em Base64 no Firestore:", storageError);
         try {
             return await salvarImagemBase64(compressedFile);
@@ -711,6 +744,10 @@ window.abrirCropImagemUpload = function(inputId, index) {
 
         window.setCropProdutoModo();
         const modal = document.getElementById('modal-crop-produto');
+        // CORREÇÃO (2026-10): o recorte abria ATRÁS do "Editar Comunicado". Leva o modal
+        // para o fim da página, assim ele fica sempre por cima do modal que o chamou.
+        if (modal && modal.parentNode !== document.body) document.body.appendChild(modal);
+        else if (modal && document.body.lastElementChild !== modal) document.body.appendChild(modal);
         if (modal) {
             modal.style.display = 'flex';
             modal.classList.add('show');
@@ -860,6 +897,7 @@ window.carregarImagemAtualCropProduto = function() {
 
         window.setCropProdutoModo(st.modo || 'square');
         const modal = document.getElementById('modal-crop-produto');
+        if (modal && document.body.lastElementChild !== modal) document.body.appendChild(modal);
         if (modal) {
             modal.style.display = 'flex';
             modal.classList.add('show');
@@ -1332,6 +1370,65 @@ window.uploadProdutoImagens = async function(inputId) {
 window.uploadImagensRecortadas = window.uploadProdutoImagens;
 
 
+// === FIX 2026-08-01: recorte de produto não pode gravar a moldura tracejada de guia na foto salva ===
+// renderCropProdutoCanvas() desenha, por cima da imagem, um contorno tracejado (branco + laranja)
+// que serve apenas de guia visual durante o ajuste do recorte. Como aplicarCropProduto() gerava o
+// arquivo final com canvas.toBlob() a partir desse mesmo canvas, essa moldura ficava gravada dentro
+// da própria foto e aparecia como uma margem de recorte nas fotos exibidas para o cliente. Esta
+// função redesenha o canvas sem o contorno de guia só no instante da exportação, sem alterar em
+// nada a pré-visualização interativa (arraste/zoom continuam mostrando a moldura normalmente).
+window.renderCropProdutoCanvasParaExportacao = function() {
+    const st = window.produtoCropState;
+    const img = st?.img;
+    const canvas = document.getElementById('produto-crop-canvas');
+    if (!img || !canvas) return false;
+
+    const rect = window.getCropProdutoRect();
+    if (!rect) return false;
+
+    const out = 900;
+    canvas.width = out;
+    canvas.height = out;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, out, out);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, out, out);
+    ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, out, out);
+    return true;
+};
+
+window.aplicarCropProduto = function() {
+    const st = window.produtoCropState;
+    const canvas = document.getElementById('produto-crop-canvas');
+    if (!st || !canvas) return;
+
+    // Remove a moldura-guia do canvas antes de capturar o blob que será salvo/enviado.
+    window.renderCropProdutoCanvasParaExportacao();
+
+    canvas.toBlob(blob => {
+        if (!blob) return window.showToast('Não foi possível aplicar o recorte.', true);
+        const list = window.uploadImageLists[st.inputId] || [];
+        const item = list[st.imageIndex];
+        if (!item) return;
+
+        if (item.file && item.url && item.url.startsWith('blob:')) {
+            try { URL.revokeObjectURL(item.url); } catch(e) {}
+        }
+
+        const nomeBase = (item.name || 'imagem').replace(/\.[^.]+$/, '');
+        const file = window.blobParaFileProduto(blob, `${nomeBase}-recorte.webp`);
+        item.file = file;
+        item.existing = false;
+        item.savedUrl = '';
+        item.url = URL.createObjectURL(file);
+        item.name = file.name;
+
+        window.fecharCropProdutoModal();
+        window.renderListaImagensUpload(st.inputId);
+    }, 'image/webp', 0.92);
+};
+
 
 // === IMAGENS 2026-06-21: carrossel automático admin ===
 window.renderAutoCarouselAdmin = function(urls = [], classeExtra = '') {
@@ -1585,6 +1682,36 @@ function getCatScheduleFromForm(prefix) {
     };
 }
 
+// =====================================================================
+// DATAS PERMITIDAS PARA RETIRADA POR CATEGORIA (2026-10)
+// Ex.: categoria "Natal" visível desde novembro, mas com retirada só de
+// 22/12 a 26/12. Campos gravados: entregaInicioData / entregaFimData
+// (formato AAAA-MM-DD). Em branco = segue a agenda normal.
+// =====================================================================
+function formatarDataEntregaCat(iso) {
+    const [a, m, d] = String(iso || '').split('-');
+    return a && m && d ? `${d}/${m}/${a}` : '';
+}
+
+function descreverPeriodoEntregaCat(c) {
+    const ini = formatarDataEntregaCat(c?.entregaInicioData);
+    const fim = formatarDataEntregaCat(c?.entregaFimData);
+    if (ini && fim) return ini === fim ? `somente ${ini}` : `${ini} a ${fim}`;
+    if (ini) return `a partir de ${ini}`;
+    if (fim) return `até ${fim}`;
+    return '';
+}
+
+function getCatEntregaFromForm(prefix) {
+    const entregaInicioData = document.getElementById(`${prefix}-entini`)?.value || '';
+    const entregaFimData = document.getElementById(`${prefix}-entfim`)?.value || '';
+    if (entregaInicioData && entregaFimData && entregaFimData < entregaInicioData) {
+        customAlert("Nas datas de retirada, o último dia não pode ser antes do primeiro dia.", "Atenção");
+        return null;
+    }
+    return { entregaInicioData, entregaFimData };
+}
+
 function orderedCategoriesList() {
     return [...globalCategories].sort((a, b) => {
         const ao = (a.ordem !== undefined && a.ordem !== null && Number.isFinite(Number(a.ordem))) ? Number(a.ordem) : null;
@@ -1609,6 +1736,8 @@ async function syncCats() {
     globalCategories = []; snap.forEach(d => { const c = d.data(); c.id = d.id; globalCategories.push(c); });
     await sincronizarCategoriasExpiradas();
     window.renderCatsTable();
+    window.renderProdsTable?.();
+    window.renderOrcamentoMenu?.();
 }
 
 
@@ -1912,9 +2041,11 @@ window.renderCatsTable = function() {
             const fimData = normalizeDateBR(fim.data);
             const iniResumo = formatScheduleValue(ini.data, ini.hora);
             const fimResumo = formatScheduleValue(fim.data, fim.hora);
+            const periodoEntregaCat = descreverPeriodoEntregaCat(c);
             const programacaoLinhas = [
                 formatScheduleLine('Início', ini.data, ini.hora),
-                formatScheduleLine('Fim', fim.data, fim.hora)
+                formatScheduleLine('Fim', fim.data, fim.hora),
+                periodoEntregaCat ? `Retirada: ${periodoEntregaCat}` : ''
             ].filter(Boolean);
             const programacaoHtml = programacaoLinhas.length
                 ? programacaoLinhas.map(linha => `<span class="cat-period-line">${linha}</span>`).join('')
@@ -2155,6 +2286,8 @@ document.getElementById('form-add-cat').onsubmit = async(e) => {
     e.preventDefault(); 
     const nm = document.getElementById('ac-nome').value.trim();
     const schedule = getCatScheduleFromForm('ac');
+    const entrega = getCatEntregaFromForm('ac');
+    if (!entrega) return;
     const agendar = !!(schedule.inicioData || schedule.inicioHora || schedule.fimData || schedule.fimHora);
 
     await setDoc(doc(db, "categorias", nm.toLowerCase().replace(/\s/g, '-')), { 
@@ -2165,7 +2298,8 @@ document.getElementById('form-add-cat').onsubmit = async(e) => {
         ativo: true, 
         minIndividual: true,
         agendarVisibilidade: agendar,
-        ...schedule
+        ...schedule,
+        ...entrega
     }); 
     await reorderCategoriesAlphabetically();
     customAlert("Categoria Criada!"); window.closeModal('modal-add-cat', 'form-add-cat'); syncCats();
@@ -2185,6 +2319,8 @@ window.openEditCat = async(id) => {
     document.getElementById('ec-inih').value = ini.hora || '';
     document.getElementById('ec-fimd').value = fim.data || '';
     document.getElementById('ec-fimh').value = fim.hora || '';
+    if (document.getElementById('ec-entini')) document.getElementById('ec-entini').value = c.entregaInicioData || '';
+    if (document.getElementById('ec-entfim')) document.getElementById('ec-entfim').value = c.entregaFimData || '';
 
     window.openModal('modal-editar-cat');
 };
@@ -2193,6 +2329,8 @@ document.getElementById('form-edit-cat').onsubmit = async(e) => {
     e.preventDefault();
     
     const schedule = getCatScheduleFromForm('ec');
+    const entrega = getCatEntregaFromForm('ec');
+    if (!entrega) return;
     const agendar = !!(schedule.inicioData || schedule.inicioHora || schedule.fimData || schedule.fimHora);
 
     await updateDoc(doc(db, "categorias", document.getElementById('ec-id').value), { 
@@ -2201,7 +2339,8 @@ document.getElementById('form-edit-cat').onsubmit = async(e) => {
         tipoColuna: document.getElementById('ec-col').value, 
         mensagemObs: window.getCatRichText('ec'),
         agendarVisibilidade: agendar,
-        ...schedule
+        ...schedule,
+        ...entrega
     });
     customAlert("Categoria Atualizada!"); window.closeModal('modal-editar-cat', 'form-edit-cat'); syncCats(); loadProds();
 };
@@ -2222,6 +2361,8 @@ window.togC = async(id, s) => {
     }
     await sincronizarCategoriasExpiradas();
     window.renderCatsTable(); 
+    window.renderProdsTable?.();
+    window.renderOrcamentoMenu?.();
 };
 
 window.delC = async(id) => { 
@@ -2433,6 +2574,40 @@ function renderProdTabs() {
 
 window.filterProds = function(cat) { currentCategoryFilter = cat; renderProdTabs(); window.renderProdsTable(); }
 
+// =====================================================================
+// PRODUTOS AGRUPADOS POR TAMANHO (2026-10)
+// Itens com mesmo nome + categoria + descrição são o mesmo produto em tamanhos
+// diferentes. Na tabela aparecem juntos (foto/nome/descrições uma vez só) e a
+// edição altera os campos em comum de todos os tamanhos de uma vez.
+// =====================================================================
+function textoPuroProduto(valor) {
+    const div = document.createElement('div');
+    div.innerHTML = String(valor || '').replace(/<br\s*\/?>/gi, ' ');
+    return (div.textContent || '').replace(/[*_]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Resumo padrão enviado no pedido: "Nome Descrição | Tamanho"
+function gerarDescricaoResumoProduto(nome, descricao, tamanho) {
+    const base = [textoPuroProduto(nome), textoPuroProduto(descricao)].filter(Boolean).join(' ');
+    const tam = String(tamanho || '').trim();
+    return tam ? `${base} | ${tam}` : base;
+}
+window.gerarDescricaoResumoProduto = gerarDescricaoResumoProduto;
+
+function chaveGrupoProduto(p) {
+    return [p?.categoria || '', textoPuroProduto(p?.nome).toLowerCase(), textoPuroProduto(p?.descricaoItem).toLowerCase()].join('|||');
+}
+
+function getGrupoDoProduto(p) {
+    const chave = chaveGrupoProduto(p);
+    return allProducts.filter(x => chaveGrupoProduto(x) === chave).sort(sortProducts);
+}
+
+function isCategoriaDoProdutoVisivel(p) {
+    const cat = globalCategories.find(c => c.nome === (p.categoria || ''));
+    return cat ? isCategoriaVisivelAgora(cat) : true;
+}
+
 window.renderProdsTable = function() {
     const searchTerm = document.getElementById('search-prod').value.toLowerCase();
     const tb = document.querySelector("#tbl-produtos tbody"); tb.innerHTML = "";
@@ -2446,27 +2621,56 @@ window.renderProdsTable = function() {
         return;
     }
     
-    filtered.sort(sortProducts).forEach((p) => {
-        const imagensProduto = window.getProdutoImagens(p);
-        const imgTag = window.renderAutoCarouselAdmin(imagensProduto, 'prod-table-carousel');
-        const isNewGroup = p.nome !== chaveAtual; if(isNewGroup) chaveAtual = p.nome;
+    // Agrupa os tamanhos do mesmo produto mantendo a ordem alfabética.
+    const grupos = [];
+    const indiceGrupo = {};
+    filtered.sort((a, b) => {
+        const n = sortProducts({ nome: a.nome }, { nome: b.nome });
+        if (n !== 0) return n;
+        const d = textoPuroProduto(a.descricaoItem).localeCompare(textoPuroProduto(b.descricaoItem), 'pt-BR');
+        return d !== 0 ? d : sortProducts(a, b);
+    }).forEach(p => {
+        const chave = chaveGrupoProduto(p);
+        if (indiceGrupo[chave] === undefined) { indiceGrupo[chave] = grupos.length; grupos.push([]); }
+        grupos[indiceGrupo[chave]].push(p);
+    });
 
-        tb.innerHTML += `<tr class="${isNewGroup ? 'group-separator-top' : ''}">
+    let html = '';
+    grupos.forEach(grupo => {
+        const base = grupo[0];
+        const imagensProduto = window.getProdutoImagens(grupo.find(x => window.getProdutoImagens(x).length) || base);
+        const imgTag = window.renderAutoCarouselAdmin(imagensProduto, 'prod-table-carousel');
+        const rs = grupo.length;
+        const categoriaVisivel = isCategoriaDoProdutoVisivel(base);
+
+        grupo.forEach((p, idx) => {
+            const visivel = p.ativo && categoriaVisivel;
+            const subStatus = p.ativo && !categoriaVisivel ? '<span class="prod-status-sub">categoria oculta</span>' : '';
+            const celulasGrupo = idx === 0 ? `
+            <td data-label="Foto:" rowspan="${rs}" class="prod-grupo-cell">${imgTag}</td>
+            <td data-label="Desc. Imagem:" rowspan="${rs}" class="prod-grupo-cell"><small>${base.descricaoPopup ? window.formatText(base.descricaoPopup) : '-'}</small></td>
+            <td data-label="Nome:" rowspan="${rs}" class="prod-grupo-cell"><strong style="color:var(--favu-rust); font-size:1.1rem;">${base.nome}</strong></td>
+            <td data-label="Categoria:" rowspan="${rs}" class="prod-grupo-cell col-categoria">${base.categoria || '-'}</td>` : '';
+            const celulaDesc = idx === 0 ? `<td data-label="Desc. Produto:" rowspan="${rs}" class="prod-grupo-cell"><small>${base.descricaoItem ? window.formatText(base.descricaoItem) : '-'}</small></td>` : '';
+
+            html += `<tr class="${idx === 0 ? 'group-separator-top' : 'prod-grupo-continuacao'}">
             <td data-label="Sel:" style="text-align: center;"><input type="checkbox" class="bulk-checkbox row-checkbox" value="${p.id}" onchange="window.checkSelection('produtos')"></td>
-            <td data-label="Foto:">${imgTag}</td><td data-label="Nome:"><strong style="color:var(--favu-rust); font-size:1.1rem;">${p.nome}</strong></td>
-            <td data-label="Categoria:">${p.categoria}</td><td data-label="Tam:">${p.tamanho||'-'}</td><td data-label="Mín:">${p.min||1}</td>
-            <td data-label="Preço:">R$ ${(Number(p.preco) || 0).toFixed(2)}</td><td data-label="Desc. Produto:"><small>${p.descricaoItem ? window.formatText(p.descricaoItem) : '-'}</small></td>
-            <td data-label="Desc. Resumo:"><small>${p.descricaoResumo ? window.formatText(p.descricaoResumo) : '-'}</small></td><td data-label="Desc. Imagem:"><small>${p.descricaoPopup ? window.formatText(p.descricaoPopup) : '-'}</small></td>
-            <td data-label="Status:"><span class="badge ${p.ativo?'ativo':'inativo'}">${p.ativo?'Visível':'Oculto'}</span></td>
+            ${celulasGrupo}
+            <td data-label="Tam:">${p.tamanho||'-'}</td><td data-label="Mín:">${p.min||1}</td>
+            <td data-label="Preço:">R$ ${(Number(p.preco) || 0).toFixed(2)}</td>
+            ${celulaDesc}
+            <td data-label="Status:"><span class="badge ${visivel?'ativo':'inativo'}">${visivel?'Visível':'Oculto'}</span>${subStatus}</td>
             <td data-label="Ações:">
                 <div class="action-btns-wrapper">
                     <button class="btn-action edit" onclick="window.openEditor('${p.id}')"><i class="fas fa-pencil-alt"></i></button>
-                    <button class="btn-action toggle" onclick="window.togP('${p.id}', ${!p.ativo})"><i class="fas fa-${p.ativo?'eye':'eye-slash'}"></i></button>
+                    <button class="btn-action toggle" title="${p.ativo && !categoriaVisivel ? 'A categoria está oculta: o item só aparece quando ela voltar' : ''}" onclick="window.togP('${p.id}', ${!p.ativo})"><i class="fas fa-${visivel?'eye':'eye-slash'}"></i></button>
                     <button class="btn-action del" onclick="window.delP('${p.id}')"><i class="fas fa-trash"></i></button>
                 </div>
             </td>
         </tr>`;
+        });
     });
+    tb.innerHTML = html;
     setTimeout(() => window.iniciarCarrosseisAutomaticosAdmin(document.getElementById('tbl-produtos')), 80);
 }
 
@@ -2492,7 +2696,8 @@ document.getElementById('form-add-prod').onsubmit = async(e) => {
                 nome: nomeBase, categoria: categoriaBase, min: minVariation, 
                 descricaoItem: descMenuBase, descricaoPopup: descPopupBase, 
                 imagemUrl: url, imagensUrls: urlsProduto, ativo: true, tamanho: v.querySelector('.v-tam').value.trim(), 
-                preco: parseFloat(v.querySelector('.v-preco').value)||0, descricaoResumo: descResumoBase
+                preco: parseFloat(v.querySelector('.v-preco').value)||0,
+                descricaoResumo: gerarDescricaoResumoProduto(nomeBase, descMenuBase, v.querySelector('.v-tam').value.trim()) || descResumoBase
             });
         }
         customAlert("Item(ns) Adicionado(s)!"); window.limparListaImagensUpload?.('a-file');
@@ -2548,6 +2753,15 @@ window.openEditor = async function(id) {
             document.getElementById('e-img-none').style.display = 'block';
         }
 
+        // Outros tamanhos do mesmo produto
+        const atual = allProducts.find(x => x.id === id) || { id, ...p };
+        const grupo = getGrupoDoProduto(atual);
+        window.edicaoProdGrupoIds = grupo.map(x => x.id);
+        window.edicaoProdOutrosTamanhos = grupo.filter(x => x.id !== id).map(x => ({
+            id: x.id, tamanho: x.tamanho || '', min: x.min || 1, preco: Number(x.preco) || 0, removido: false
+        }));
+        window.renderOutrosTamanhosEdicaoProd();
+
         document.getElementById('e-cat').dispatchEvent(new Event('change'));
         window.openModal('modal-editar-prod');
     } catch (err) {
@@ -2557,11 +2771,42 @@ window.openEditor = async function(id) {
 };
 window.openEditProd = window.openEditor;
 
+window.edicaoProdGrupoIds = [];
+window.edicaoProdOutrosTamanhos = [];
+
+window.renderOutrosTamanhosEdicaoProd = function() {
+    const box = document.getElementById('e-outros-tamanhos');
+    if (!box) return;
+    const lista = window.edicaoProdOutrosTamanhos || [];
+    box.innerHTML = lista.length ? lista.map((t, i) => `
+        <div class="e-outro-tam-row ${t.removido ? 'removido' : ''}">
+            <div><label>Tamanho</label><input type="text" value="${String(t.tamanho).replace(/"/g, '&quot;')}" ${t.removido ? 'disabled' : ''} oninput="window.edicaoProdOutrosTamanhos[${i}].tamanho = this.value"></div>
+            <div><label>Mín.</label><input type="number" min="1" value="${t.min}" ${t.removido ? 'disabled' : ''} oninput="window.edicaoProdOutrosTamanhos[${i}].min = parseInt(this.value) || 1"></div>
+            <div><label>Preço (R$)</label><input type="number" step="0.01" value="${t.preco}" ${t.removido ? 'disabled' : ''} oninput="window.edicaoProdOutrosTamanhos[${i}].preco = parseFloat(this.value) || 0"></div>
+            <div><button type="button" class="btn btn-danger" style="padding:8px 10px;" title="${t.removido ? 'Desfazer' : 'Excluir este tamanho ao salvar'}" onclick="window.toggleRemoverTamanhoEdicaoProd(${i})"><i class="fas fa-${t.removido ? 'undo' : 'trash'}"></i></button></div>
+        </div>`).join('') : '<small style="color:#999;">Nenhum outro tamanho. Use o botão abaixo para adicionar.</small>';
+};
+
+window.addTamanhoEdicaoProd = function() {
+    window.edicaoProdOutrosTamanhos.push({ id: null, tamanho: '', min: 1, preco: 0, removido: false });
+    window.renderOutrosTamanhosEdicaoProd();
+};
+
+window.toggleRemoverTamanhoEdicaoProd = function(i) {
+    const t = window.edicaoProdOutrosTamanhos[i];
+    if (!t) return;
+    if (!t.id) window.edicaoProdOutrosTamanhos.splice(i, 1);
+    else t.removido = !t.removido;
+    window.renderOutrosTamanhosEdicaoProd();
+};
+
 document.getElementById('e-cat').addEventListener('change', function() {
     const catObj = globalCategories.find(c => c.nome === this.value);
     const showTam = catObj && (catObj.tipoColuna === 'Tamanho' || catObj.tipoColuna === 'Tamanho/Minimo');
     
     document.getElementById('e-tam-container').style.display = showTam ? 'block' : 'none';
+    const outrosWrap = document.getElementById('e-outros-tamanhos-wrap');
+    if (outrosWrap) outrosWrap.style.display = showTam ? 'block' : 'none';
     if(document.getElementById('e-tam')) {
         document.getElementById('e-tam').required = (catObj && catObj.tipoColuna === 'Tamanho');
     }
@@ -2570,16 +2815,55 @@ document.getElementById('e-cat').addEventListener('change', function() {
 document.getElementById('form-edit-prod').onsubmit = async(e) => {
     e.preventDefault(); const btn = e.target.querySelector('button[type="submit"]'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...'; btn.disabled = true;
     try {
-        const data = { nome: document.getElementById('e-nome').value, categoria: document.getElementById('e-cat').value, tamanho: document.getElementById('e-tam').value, preco: parseFloat(document.getElementById('e-preco').value)||0, min: parseInt(document.getElementById('e-min').value)||1, descricaoItem: document.getElementById('e-dmenu').value, descricaoResumo: document.getElementById('e-dres').value, descricaoPopup: document.getElementById('e-dpop').value };
+        const idAtual = document.getElementById('e-id').value;
+        const nome = document.getElementById('e-nome').value.trim();
+        const descricaoItem = document.getElementById('e-dmenu').value;
+        const comuns = {
+            nome,
+            categoria: document.getElementById('e-cat').value,
+            descricaoItem,
+            descricaoPopup: document.getElementById('e-dpop').value
+        };
         const urlsEditProduto = await window.uploadProdutoImagens('e-file');
         if (urlsEditProduto.length) {
-            data.imagemUrl = urlsEditProduto[0] || "";
-            data.imagensUrls = urlsEditProduto;
+            comuns.imagemUrl = urlsEditProduto[0] || "";
+            comuns.imagensUrls = urlsEditProduto;
         } else if (document.getElementById('e-remove-img').value === 'true') {
-            data.imagemUrl = "";
-            data.imagensUrls = [];
-        } 
-        await updateDoc(doc(db, "produtos", document.getElementById('e-id').value), data); customAlert("Produto Atualizado!"); window.limparListaImagensUpload?.('e-file');
+            comuns.imagemUrl = "";
+            comuns.imagensUrls = [];
+        }
+
+        const tamAtual = document.getElementById('e-tam').value.trim();
+        const ops = [updateDoc(doc(db, "produtos", idAtual), {
+            ...comuns,
+            tamanho: tamAtual,
+            preco: parseFloat(document.getElementById('e-preco').value) || 0,
+            min: parseInt(document.getElementById('e-min').value) || 1,
+            descricaoResumo: gerarDescricaoResumoProduto(nome, descricaoItem, tamAtual)
+        })];
+
+        const produtoAtual = allProducts.find(x => x.id === idAtual) || {};
+        const usaTamanhos = document.getElementById('e-outros-tamanhos-wrap')?.style.display !== 'none';
+        (usaTamanhos ? (window.edicaoProdOutrosTamanhos || []) : []).forEach(t => {
+            const dadosTam = {
+                ...comuns,
+                tamanho: String(t.tamanho || '').trim(),
+                preco: Number(t.preco) || 0,
+                min: parseInt(t.min) || 1,
+                descricaoResumo: gerarDescricaoResumoProduto(nome, descricaoItem, t.tamanho)
+            };
+            if (t.id && t.removido) ops.push(deleteDoc(doc(db, "produtos", t.id)));
+            else if (t.id) ops.push(updateDoc(doc(db, "produtos", t.id), dadosTam));
+            else if (dadosTam.tamanho) ops.push(addDoc(collection(db, "produtos"), {
+                ...dadosTam,
+                imagemUrl: comuns.imagemUrl ?? produtoAtual.imagemUrl ?? '',
+                imagensUrls: comuns.imagensUrls ?? produtoAtual.imagensUrls ?? [],
+                ativo: true
+            }));
+        });
+
+        await Promise.all(ops);
+        customAlert("Produto Atualizado!"); window.limparListaImagensUpload?.('e-file');
         window.closeModal('modal-editar-prod', 'form-edit-prod'); loadProds(); 
     } catch(err) { console.error('Erro ao salvar produto:', err); customAlert('Erro ao salvar produto. Veja o Console para detalhes.', 'Erro'); } finally { btn.innerHTML = 'Salvar Alterações'; btn.disabled = false; }
 };
@@ -2806,14 +3090,15 @@ window.renderOrcamentoMenu = function() {
     const nav = document.getElementById('orc-cats-nav');
     container.innerHTML = ""; nav.innerHTML = "";
     
-    // No orçamento do Admin, as categorias ficam disponíveis mesmo se estiverem ocultas/agendadas para o site de clientes.
+    // ALTERADO (2026-10): o orçamento mostra só o que o cliente vê — itens ocultos e
+    // itens de categorias ocultas/fora da programação não aparecem.
     const termoBuscaOrcamento = (document.getElementById('search-orcamento')?.value || '').trim().toLowerCase();
     const normalizarBuscaOrcamento = (valor) => (valor || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const termoNormalizado = normalizarBuscaOrcamento(termoBuscaOrcamento);
     
     const orcAgrupados = {}; 
     allProducts
-        .filter(p => p.ativo)
+        .filter(p => p.ativo && isCategoriaDoProdutoVisivel(p))
         .filter(p => {
             if (!termoNormalizado) return true;
             return [p.nome, p.categoria, p.tamanho, p.descricaoItem, p.descricaoResumo, p.descricaoPopup]
@@ -2884,6 +3169,9 @@ window.renderOrcamentoMenu = function() {
         const itens = orcAgrupados[nomeCat].sort(sortProducts);
 
         let htmlFull = `<div class="categoria-group-orc active-group" id="orc-grupo-${nomeCat.toLowerCase().replace(/\s/g, '-')}"><h2 class="categoria-title-orc">${nomeCat}</h2>`;
+        // Igual ao cardápio: aviso de período de retirada no topo da categoria.
+        const periodoRetiradaOrc = descreverPeriodoEntregaCat(catObj);
+        if (periodoRetiradaOrc) htmlFull += `<div class="info-box info-box-retirada"><div class="info-box-content"><i class="fa-regular fa-calendar"></i> <strong>Retirada: ${periodoRetiradaOrc}.</strong></div></div>`;
         
         // Se a categoria for Tamanho/Minimo, segrega e gera dois grupos
         if (catObj.tipoColuna === 'Tamanho/Minimo') {
@@ -2901,6 +3189,8 @@ window.renderOrcamentoMenu = function() {
             htmlFull += gerarTabelaHtml(itens, catObj.tipoColuna);
         }
         
+        // Igual ao cardápio: comunicado da categoria embaixo da tabela.
+        if (catObj.mensagemObs && String(catObj.mensagemObs).trim()) htmlFull += `<div class="info-box"><div class="info-box-content">${window.formatText(catObj.mensagemObs)}</div></div>`;
         htmlFull += `</div>`; 
         container.innerHTML += htmlFull;
     });
@@ -3049,7 +3339,7 @@ window.gerarOrcamentoWA = async function() {
             const preco = converterValorParaNumero(p.preco);
             bruto += (q * preco);
             if (!groups[cat]) groups[cat] = [];
-            groups[cat].push({ q, p: preco, desc: p.descricaoResumo || p.nome });
+            groups[cat].push({ q, p: preco, desc: p.descricaoResumo || p.nome, produtoId: p.id, tamanho: p.tamanho || '' });
         }
     });
 
@@ -3126,6 +3416,11 @@ window.gerarOrcamentoWA = async function() {
         Cupom: cupomFirestore,
         Observacoes: obs,
         Resumo_dos_Itens: resumoTextoFirestore.trim(),
+        // CORREÇÃO HISTÓRICO: itens congelados no momento do orçamento.
+        Itens: Object.keys(groups).flatMap(cat => groups[cat].map(i => montarItemSnapshotPedido({
+            produtoId: i.produtoId, nome: i.desc, categoria: cat, tamanho: i.tamanho, qtd: i.q, preco: i.p
+        }))),
+        Subtotal_Itens: formatarMoedaOrc(bruto),
         createdAt: Date.now()
     };
 
@@ -3182,11 +3477,97 @@ window.handleDragOver = function(e) { e.preventDefault(); e.dataTransfer.dropEff
 window.handleDrop = async function(e) { e.preventDefault(); if (dragSrcEl != this) { this.parentNode.insertBefore(dragSrcEl, this); const items = document.querySelectorAll('.carrossel-item'); for (let i = 0; i < items.length; i++) await updateDoc(doc(db, 'carrossel', items[i].getAttribute('data-id')), { order: i }); } return false; };
 window.handleDragEnd = function(e) { this.classList.remove('dragging'); }
 
+// =====================================================================
+// CARROSSEL DA PÁGINA INICIAL (2026-10): adicionar, apagar e reordenar.
+// Enquanto a coleção "carrossel" está vazia, o site mostra as fotos padrão
+// images/S01.jpg ... S23.jpg do próprio site — que não dava para editar.
+// O botão "Trazer fotos atuais" cadastra essas fotos na lista para editar.
+// =====================================================================
+window.URL_SITE_CLIENTES = window.URL_SITE_CLIENTES || 'https://favucozinha.github.io/';
+let carrosselLista = [];
+
 async function loadCarrossel() {
-    const s = await getDocs(collection(db, "carrossel")); const div = document.getElementById("galeria-preview"); div.innerHTML = "";
-    let arr = []; s.forEach(d => arr.push({id: d.id, ...d.data()})); arr.sort((a,b) => (a.order || 0) - (b.order || 0));
-    arr.forEach(d => { div.innerHTML += `<div class="carrossel-item" data-id="${d.id}" draggable="true" ondragstart="window.handleDragStart.call(this, event)" ondragover="window.handleDragOver.call(this, event)" ondrop="window.handleDrop.call(this, event)" ondragend="window.handleDragEnd.call(this, event)"><img src="${d.url}" style="width:120px; height:120px; object-fit:cover; border-radius:15px; border:2px solid var(--favu-rust);"><button type="button" style="position:absolute; top:-8px; right:-8px; background:#E60000; color:white; border:none; border-radius:50%; width:25px; height:25px; cursor:pointer;" onclick="window.delDoc('carrossel','${d.id}')"><i class="fas fa-times"></i></button></div>`; });
+    const s = await getDocs(collection(db, "carrossel"));
+    carrosselLista = [];
+    s.forEach(d => carrosselLista.push({ id: d.id, ...d.data() }));
+    carrosselLista.sort((a, b) => (a.order || 0) - (b.order || 0));
+    window.renderCarrosselAdmin();
 }
+
+window.renderCarrosselAdmin = function() {
+    const div = document.getElementById("galeria-preview");
+    const aviso = document.getElementById("carrossel-aviso-padrao");
+    if (!div) return;
+    if (aviso) {
+        aviso.style.display = carrosselLista.length ? 'none' : 'block';
+        aviso.innerHTML = `<i class="fas fa-info-circle"></i> A lista está vazia, então o site está mostrando as <strong>23 fotos padrão</strong> do site.
+            Para poder apagar ou reordenar essas fotos, traga-as para cá:<br>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <input type="text" id="carrossel-url-site" value="${window.URL_SITE_CLIENTES}" style="flex:1; min-width:220px;" title="Endereço do site de clientes">
+                <button type="button" class="btn btn-secondary" onclick="window.importarFotosPadraoCarrossel()"><i class="fas fa-download"></i> Trazer fotos atuais</button>
+            </div>`;
+    }
+    div.innerHTML = carrosselLista.map((d, i) => `
+        <div class="carrossel-item" data-id="${d.id}" draggable="true" ondragstart="window.handleDragStart.call(this, event)" ondragover="window.handleDragOver.call(this, event)" ondrop="window.handleDrop.call(this, event)" ondragend="window.handleDragEnd.call(this, event)">
+            <img src="${d.url}" loading="lazy" onerror="this.style.opacity=.3">
+            <div class="carrossel-item-barra">
+                <button type="button" title="Mover para trás" ${i === 0 ? 'disabled' : ''} onclick="window.moverItemCarrossel(${i}, -1)"><i class="fas fa-arrow-left"></i></button>
+                <span>${i + 1}</span>
+                <button type="button" title="Mover para frente" ${i === carrosselLista.length - 1 ? 'disabled' : ''} onclick="window.moverItemCarrossel(${i}, 1)"><i class="fas fa-arrow-right"></i></button>
+                <button type="button" title="Apagar" onclick="window.delDoc('carrossel','${d.id}')"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>`).join('');
+};
+
+async function salvarOrdemCarrossel() {
+    await Promise.all(carrosselLista.map((d, i) => d.order === i ? null : updateDoc(doc(db, 'carrossel', d.id), { order: i })).filter(Boolean));
+    carrosselLista.forEach((d, i) => d.order = i);
+}
+
+window.moverItemCarrossel = async function(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= carrosselLista.length) return;
+    [carrosselLista[i], carrosselLista[j]] = [carrosselLista[j], carrosselLista[i]];
+    window.renderCarrosselAdmin();
+    try { await salvarOrdemCarrossel(); } catch (e) { console.error(e); window.showToast('Erro ao salvar a ordem.', true); }
+};
+
+// Arrastar e soltar (computador)
+window.handleDrop = async function(e) {
+    e.preventDefault();
+    if (dragSrcEl && dragSrcEl !== this) {
+        const de = carrosselLista.findIndex(d => d.id === dragSrcEl.dataset.id);
+        const para = carrosselLista.findIndex(d => d.id === this.dataset.id);
+        if (de > -1 && para > -1) {
+            const [item] = carrosselLista.splice(de, 1);
+            carrosselLista.splice(para, 0, item);
+            window.renderCarrosselAdmin();
+            try { await salvarOrdemCarrossel(); } catch (err) { console.error(err); }
+        }
+    }
+    return false;
+};
+
+window.importarFotosPadraoCarrossel = async function() {
+    let base = String(document.getElementById('carrossel-url-site')?.value || window.URL_SITE_CLIENTES).trim();
+    if (!/^https?:\/\//i.test(base)) base = 'https://' + base;
+    if (!base.endsWith('/')) base += '/';
+    window.mostrarLoading(true);
+    try {
+        const ops = [];
+        for (let n = 1; n <= 23; n++) {
+            const url = `${base}images/S${String(n).padStart(2, '0')}.jpg`;
+            ops.push(addDoc(collection(db, "carrossel"), { url, order: n - 1, padrao: true }));
+        }
+        await Promise.all(ops);
+        window.showToast('Fotos padrão trazidas para a lista!');
+        await loadCarrossel();
+    } catch (e) {
+        console.error(e);
+        customAlert('Não foi possível trazer as fotos.', 'Erro');
+    }
+    window.mostrarLoading(false);
+};
 
 window.delDoc = async(col, id) => { customConfirm("Excluir definitivamente?", async () => { await deleteDoc(doc(db, col, id)); if(col==='avisos') loadAvisos(); if(col==='carrossel') loadCarrossel(); }); };
 
@@ -3824,16 +4205,23 @@ function extrairDescontosTotaisPedido(...fontes) {
 }
 
 function calcularValorPedidoPorItensCorrigidos(p) {
-    if (!p || !p.Resumo_dos_Itens) return null;
+    if (!p) return null;
 
-    const itens = parseResumoEditPedido(p.Resumo_dos_Itens || '');
-    if (!itens.length) return null;
-
-    const subtotal = itens.reduce((acc, item) => {
-        const qtd = parseInt(item.qtd) || 0;
-        const preco = converterValorParaNumero(item.preco);
-        return acc + (qtd * preco);
-    }, 0);
+    // CORREÇÃO HISTÓRICO: antes usava parseResumoEditPedido, que buscava o preço
+    // no cadastro ATUAL de produtos. Agora usa só o que foi gravado no pedido:
+    // 1º a lista congelada `Itens`; 2º os preços escritos no texto do resumo.
+    // Se faltar preço em algum item (pedido antigo do site), retorna null e o
+    // sistema usa o Total_Final gravado, que nunca muda sozinho.
+    const congelados = getItensCongeladosPedido(p);
+    let subtotal = 0;
+    if (congelados) {
+        subtotal = calcularSubtotalItensSnapshotPedido(congelados);
+    } else {
+        if (!p.Resumo_dos_Itens) return null;
+        const itens = extrairItensResumoPedido(p.Resumo_dos_Itens || '');
+        if (!itens.length || itens.some(i => !(i.preco > 0))) return null;
+        subtotal = itens.reduce((acc, item) => acc + ((parseInt(item.qtd) || 0) * item.preco), 0);
+    }
 
     if (subtotal <= 0) return null;
 
@@ -4161,7 +4549,7 @@ window.copiarPedido = function(id) {
     preencherDescontoManualEditPedido(descontoManualExistente);
 
     window.preencherSelectProdutosAdicionais();
-    window.carregarItensEditPedido(p.Resumo_dos_Itens || '');
+    window.carregarItensEditPedido(p.Resumo_dos_Itens || '', p.Itens || null);
     window.inicializarNovosItensPedidoEditado();
     window.openModal('edit-modal-pedido');
 };
@@ -4177,6 +4565,7 @@ window.excluirPedidoLogico = function(id) {
             await updateDoc(doc(db, "pedidos", p._docId || id), {
                 ID_do_Pedido: novoId,
                 Status_do_Pedido: 'Excluído',
+                statusAnterior: p.Status_do_Pedido || 'Pedido Recebido',
                 excluido: true,
                 excluidoEm: Date.now(),
                 idOriginal: id
@@ -4281,7 +4670,7 @@ window.abrirModalEdicao = function(id) {
     window.editCupomAplicado = null;
     preencherDescontoManualEditPedido(descontoManualExistente);
     window.preencherSelectProdutosAdicionais();
-    window.carregarItensEditPedido(p.Resumo_dos_Itens || '');
+    window.carregarItensEditPedido(p.Resumo_dos_Itens || '', p.Itens || null);
     window.inicializarNovosItensPedidoEditado();
     window.openModal('edit-modal-pedido');
 }
@@ -4326,6 +4715,65 @@ function encontrarProdutoPorTextoPedido(nome) {
     }) || null;
 }
 
+// =====================================================================
+// HISTÓRICO CONGELADO DOS PEDIDOS (2026-10)
+// ---------------------------------------------------------------------
+// PROBLEMA: os pedidos só guardavam um TEXTO ("2 un. - Bolo de Morango").
+// Para descobrir preço e categoria, o painel procurava esse texto na lista
+// ATUAL de produtos. Resultado:
+//   - mudou o preço do produto  -> pedidos antigos passavam a mostrar o preço novo;
+//   - mudou o nome do produto   -> o pedido não achava mais o produto e o item
+//                                  perdia categoria/preço.
+// CORREÇÃO: cada pedido passa a gravar o campo `Itens` (lista com nome,
+// categoria, quantidade e preço unitário DO MOMENTO DO PEDIDO). Tudo que lê
+// o pedido usa essa lista primeiro. O cadastro de produtos é consultado
+// apenas para pedidos antigos que não trazem preço no texto.
+// =====================================================================
+function arredondarCentavosPedido(v) {
+    return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function montarItemSnapshotPedido({ produtoId = '', nome = '', categoria = '', tamanho = '', qtd = 0, preco = 0 } = {}) {
+    const quantidade = parseInt(qtd, 10) || 0;
+    const precoUnit = arredondarCentavosPedido(converterValorParaNumero(preco));
+    return {
+        produtoId: produtoId && produtoId !== '__OUTROS__' ? String(produtoId) : '',
+        nome: String(nome || '').trim(),
+        categoria: String(categoria || '').trim() || 'Sem categoria',
+        tamanho: String(tamanho || '').trim(),
+        qtd: quantidade,
+        precoUnitario: precoUnit,
+        total: arredondarCentavosPedido(quantidade * precoUnit)
+    };
+}
+
+// Retorna a lista congelada de itens do pedido, ou null se for um pedido antigo sem ela.
+function getItensCongeladosPedido(p) {
+    if (!p || !Array.isArray(p.Itens) || !p.Itens.length) return null;
+    const itens = p.Itens
+        .map(i => montarItemSnapshotPedido({ ...i, preco: i.precoUnitario ?? i.preco }))
+        .filter(i => i.nome && i.qtd > 0);
+    return itens.length ? itens : null;
+}
+
+// Converte os itens da tela de edição para o formato gravado no Firestore.
+function montarItensSnapshotDaEdicaoPedido() {
+    return (window.editPedidoItens || [])
+        .filter(item => (parseInt(item.qtd) || 0) > 0 && String(item.nome || '').trim())
+        .map(item => montarItemSnapshotPedido({
+            produtoId: item.outros ? '' : item.produtoId,
+            nome: item.nome,
+            categoria: item.categoria,
+            tamanho: item.tamanho || '',
+            qtd: item.qtd,
+            preco: item.preco
+        }));
+}
+
+function calcularSubtotalItensSnapshotPedido(itens) {
+    return arredondarCentavosPedido((itens || []).reduce((acc, i) => acc + (i.qtd * i.precoUnitario), 0));
+}
+
 function parseResumoEditPedido(texto) {
     const itens = [];
     let categoriaAtual = 'Sem categoria';
@@ -4367,26 +4815,51 @@ function parseResumoEditPedido(texto) {
         nome = nome.replace(/\s*-\s*$/g, '').trim();
         if (!preco && totalLinha && qtd) preco = totalLinha / qtd;
 
+        // CORREÇÃO HISTÓRICO: o produto do cadastro só serve como "referência" e como
+        // fallback para pedidos antigos sem preço/categoria no texto. O que está
+        // escrito no pedido (nome, preço e categoria) sempre vence o cadastro atual.
         const produto = encontrarProdutoPorTextoPedido(nome);
+        const categoriaDoTexto = categoriaAtual && categoriaAtual !== 'Sem categoria' ? categoriaAtual : '';
+        const precoFinal = preco || (produto ? converterValorParaNumero(produto.preco) : 0) || 0;
         itens.push({
             id: gerarIdItemEditPedido(),
             produtoId: produto ? produto.id : '__OUTROS__',
-            nome: produto ? (produto.tamanho ? `${produto.nome} - ${produto.tamanho}` : produto.nome) : nome,
-            categoria: produto ? (produto.categoria || 'Geral') : (categoriaAtual || 'Outros'),
+            nome: nome || (produto ? (produto.tamanho ? `${produto.nome} - ${produto.tamanho}` : produto.nome) : ''),
+            categoria: categoriaDoTexto || (produto ? (produto.categoria || 'Geral') : 'Outros'),
+            tamanho: produto?.tamanho || '',
             qtd: qtd || 1,
-            preco: produto ? (converterValorParaNumero(produto.preco) || preco || 0) : (preco || 0),
-            outros: !produto
+            preco: precoFinal,
+            precoDoTexto: !!preco,
+            outros: !produto,
+            congelado: !!produto
         });
     });
 
     return itens;
 }
 
-function montarOptionsProdutosEditPedido(selectedId) {
-    let html = '<option value="">Selecione...</option><option value="__OUTROS__" ' + (selectedId === '__OUTROS__' ? 'selected' : '') + '>Outros</option>';
+function itemPedidoDiferenteDoCadastro(item) {
+    if (!item || item.outros || !item.congelado) return false;
+    const produto = getProdutoEditPedido(item.produtoId);
+    if (!produto) return true;
+    const nomeAtual = produto.tamanho ? `${produto.nome} - ${produto.tamanho}` : produto.nome;
+    const nomesAtuais = [nomeAtual, produto.descricaoResumo].map(normalizarTextoPedido);
+    const precoAtual = arredondarCentavosPedido(converterValorParaNumero(produto.preco));
+    return !nomesAtuais.includes(normalizarTextoPedido(item.nome)) || precoAtual !== arredondarCentavosPedido(item.preco);
+}
+
+function montarOptionsProdutosEditPedido(selectedId, item = null) {
+    // CORREÇÃO HISTÓRICO: se o produto foi renomeado, teve o preço alterado ou foi excluído
+    // depois do pedido, a opção selecionada é a versão "como no pedido" (nome e preço antigos).
+    // Escolher outro produto da lista é uma troca intencional e aí sim usa os dados atuais.
+    const usarCongelado = itemPedidoDiferenteDoCadastro(item);
+    let html = '<option value="">Selecione...</option><option value="__OUTROS__" ' + (!usarCongelado && selectedId === '__OUTROS__' ? 'selected' : '') + '>Outros</option>';
+    if (usarCongelado) {
+        html += `<option value="__CONGELADO__" selected>${escapeHtmlPedido(item.nome)} (como no pedido)</option>`;
+    }
     [...allProducts].sort(sortProducts).forEach(p => {
         const nome = p.tamanho ? `${p.nome} - ${p.tamanho}` : p.nome;
-        html += `<option value="${p.id}" ${selectedId === p.id ? 'selected' : ''}>${nome}</option>`;
+        html += `<option value="${p.id}" ${!usarCongelado && selectedId === p.id ? 'selected' : ''}>${nome}</option>`;
     });
     return html;
 }
@@ -4468,19 +4941,54 @@ window.renderItensPedidoEdit = function() {
         return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
     });
 
+    // NOVO (2026-08): agrupa visualmente variações de tamanho do mesmo produto (ex.: "Bolo - P"/"Bolo - M"/"Bolo - G"),
+    // mostrando nome e categoria uma única vez — só quando há mais de uma variação do mesmo produto neste pedido.
+    // Isso NÃO altera cálculo, salvamento ou o array window.editPedidoItens: cada linha continua com seu
+    // próprio select/valor/qtd escondido no DOM, só a apresentação visual muda.
+    const extrairNomeBaseSufixoPedido = (nome) => {
+        const texto = String(nome || '').trim();
+        const m = texto.match(/^(.*)\s-\s([^-]+)$/);
+        return m ? { base: m[1].trim(), sufixo: m[2].trim() } : { base: texto, sufixo: '' };
+    };
+    const contagemGrupoItemPedido = {};
+    itensOrdenados.forEach(item => {
+        if (item.outros) return;
+        const { base, sufixo } = extrairNomeBaseSufixoPedido(item.nome);
+        if (!sufixo) return;
+        const chave = `${item.categoria || ''}|||${base.toLowerCase()}`;
+        contagemGrupoItemPedido[chave] = (contagemGrupoItemPedido[chave] || 0) + 1;
+    });
+
+    let grupoItemPedidoAtual = null;
+
     itensOrdenados.forEach(item => {
         const categoria = item.categoria || 'Sem categoria';
         if (categoria !== categoriaAtual) {
             categoriaAtual = categoria;
             html += `<div class="edit-item-category">${categoria}</div>`;
+            grupoItemPedidoAtual = null;
         }
+
+        const { base, sufixo } = extrairNomeBaseSufixoPedido(item.nome);
+        const chaveGrupo = `${categoria}|||${base.toLowerCase()}`;
+        const ehVariacaoAgrupavel = !item.outros && sufixo && contagemGrupoItemPedido[chaveGrupo] > 1;
+        const ehPrimeiraDoGrupo = chaveGrupo !== grupoItemPedidoAtual;
+        if (ehVariacaoAgrupavel) grupoItemPedidoAtual = chaveGrupo;
+
+        if (ehVariacaoAgrupavel && ehPrimeiraDoGrupo) {
+            html += `<div class="edit-item-produto-header"><i class="fas fa-utensils"></i> ${base}</div>`;
+        }
+
+        const celulaProduto = ehVariacaoAgrupavel
+            ? `<span class="edit-item-variacao-label">Tamanho ${sufixo}</span><select style="display:none;" onchange="window.atualizarItemPedidoSelect('${item.id}', this.value)">${montarOptionsProdutosEditPedido(item.produtoId, item)}</select>`
+            : `<select onchange="window.atualizarItemPedidoSelect('${item.id}', this.value)">${montarOptionsProdutosEditPedido(item.produtoId, item)}</select>
+               <input class="edit-outros-name" type="text" value="${String(item.nome || '').replace(/"/g, '&quot;')}" placeholder="Nome do item" ${item.outros ? '' : 'readonly style="display:none;"'} oninput="window.atualizarItemPedidoCampo('${item.id}', 'nome', this.value)">`;
 
         const total = (parseInt(item.qtd) || 0) * (parseFloat(item.preco) || 0);
         html += `
-            <div class="edit-item-row" data-id="${item.id}">
+            <div class="edit-item-row${ehVariacaoAgrupavel ? ' edit-item-row-variacao' : ''}" data-id="${item.id}">
                 <div class="edit-item-product-cell">
-                    <select onchange="window.atualizarItemPedidoSelect('${item.id}', this.value)">${montarOptionsProdutosEditPedido(item.produtoId)}</select>
-                    <input class="edit-outros-name" type="text" value="${String(item.nome || '').replace(/"/g, '&quot;')}" placeholder="Nome do item" ${item.outros ? '' : 'readonly style="display:none;"'} oninput="window.atualizarItemPedidoCampo('${item.id}', 'nome', this.value)">
+                    ${celulaProduto}
                 </div>
                 <div>
                     <label>Unid.</label>
@@ -4525,8 +5033,40 @@ window.renderItensPedidoEdit = function() {
     window.recalcularPedidoEditado();
 };
 
-window.carregarItensEditPedido = function(resumo) {
+window.carregarItensEditPedido = function(resumo, itensCongelados = null) {
+    // CORREÇÃO HISTÓRICO: se o pedido tem a lista congelada `Itens`, ela é a fonte oficial.
+    const snapshot = Array.isArray(itensCongelados) ? getItensCongeladosPedido({ Itens: itensCongelados }) : null;
+    if (snapshot) {
+        window.editPedidoItens = snapshot.map(i => {
+            const produtoExiste = i.produtoId && getProdutoEditPedido(i.produtoId);
+            return {
+                id: gerarIdItemEditPedido(),
+                produtoId: produtoExiste ? i.produtoId : '__OUTROS__',
+                nome: i.nome,
+                categoria: i.categoria,
+                tamanho: i.tamanho || '',
+                qtd: i.qtd,
+                preco: i.precoUnitario,
+                outros: !produtoExiste,
+                congelado: !!produtoExiste
+            };
+        });
+        window.renderItensPedidoEdit();
+        return;
+    }
     window.editPedidoItens = parseResumoEditPedido(resumo);
+
+    // Pedido antigo sem preço no texto: o preço veio do cadastro atual e pode não ser o original.
+    const itensSemPrecoGravado = window.editPedidoItens.some(i => !i.precoDoTexto);
+    if (window.editPedidoItens.length && itensSemPrecoGravado) {
+        const totalGravado = converterValorParaNumero(document.getElementById('edit-total-pedido')?.value || '0');
+        const descontoGravado = extrairDescontosTotaisPedido(document.getElementById('edit-cupom-pedido')?.value || '') + (getDescontoManualEditPedido() || 0);
+        const totalRecalculado = Math.max(0, getSubtotalEditPedido() - descontoGravado);
+        if (totalGravado > 0 && Math.abs(totalRecalculado - totalGravado) > 0.05) {
+            window.showToast(`Atenção: pedido antigo sem preço gravado. Total original R$ ${formatarNumeroMoedaPedido(totalGravado)}; com preços atuais daria R$ ${formatarNumeroMoedaPedido(totalRecalculado)}. Confira antes de salvar.`, true);
+        }
+    }
+
     if (!window.editPedidoItens.length && resumo && resumo.trim()) {
         window.editPedidoItens = [{
             id: gerarIdItemEditPedido(),
@@ -4552,6 +5092,8 @@ window.toggleCamposOutros = function() {
 window.atualizarItemPedidoSelect = function(itemId, produtoId) {
     const item = window.editPedidoItens.find(i => i.id === itemId);
     if (!item) return;
+    if (produtoId === '__CONGELADO__') return; // mantém nome/preço do momento do pedido
+    item.congelado = false;
 
     if (produtoId === '__OUTROS__') {
         item.produtoId = '__OUTROS__';
@@ -4566,6 +5108,7 @@ window.atualizarItemPedidoSelect = function(itemId, produtoId) {
         item.outros = false;
         item.nome = produto.tamanho ? `${produto.nome} - ${produto.tamanho}` : produto.nome;
         item.categoria = produto.categoria || 'Geral';
+        item.tamanho = produto.tamanho || '';
         item.preco = converterValorParaNumero(produto.preco) || 0;
     }
 
@@ -4686,6 +5229,7 @@ window.atualizarNovoItemPedidoSelect = function(itemId, produtoId) {
         item.outros = false;
         item.nome = produto.tamanho ? `${produto.nome} - ${produto.tamanho}` : produto.nome;
         item.categoria = produto.categoria || 'Geral';
+        item.tamanho = produto.tamanho || '';
         item.preco = converterValorParaNumero(produto.preco) || 0;
     }
 
@@ -4926,6 +5470,9 @@ window.submitEditForm = async function(e) {
             Cupom: cupomFinal,
             Observacoes: document.getElementById('edit-obs-pedido').value,
             Resumo_dos_Itens: document.getElementById('edit-resumo-pedido').value,
+            // CORREÇÃO HISTÓRICO: grava os itens com nome/categoria/preço congelados.
+            Itens: montarItensSnapshotDaEdicaoPedido(),
+            Subtotal_Itens: formatarNumeroMoedaPedido(getSubtotalEditPedido()),
             updatedAt: Date.now()
         };
 
@@ -4974,6 +5521,48 @@ window.submitEditForm = async function(e) {
     }
     window.mostrarLoading(false);
 }
+
+// =====================================================================
+// MIGRAÇÃO ÚNICA: congela os pedidos antigos que ainda não têm `Itens`.
+// Rode UMA vez pelo console do navegador (logado no painel), ANTES de
+// renomear ou mudar preço de mais produtos:
+//     await window.congelarItensPedidosAntigos()        // só simula
+//     await window.congelarItensPedidosAntigos(true)    // grava
+// Só grava quando a soma dos itens bate com o Total_Final do pedido
+// (diferença até R$ 0,05). Pedidos que não batem são listados no console
+// para conferência manual e continuam usando o Total_Final.
+// =====================================================================
+window.congelarItensPedidosAntigos = async function(gravar = false) {
+    const pendentes = (window.todosPedidos || []).filter(p => !getItensCongeladosPedido(p) && p.Resumo_dos_Itens);
+    const ok = [], divergentes = [];
+
+    pendentes.forEach(p => {
+        const itens = parseResumoEditPedido(p.Resumo_dos_Itens).map(i => montarItemSnapshotPedido({
+            produtoId: i.outros ? '' : i.produtoId, nome: i.nome, categoria: i.categoria, tamanho: i.tamanho, qtd: i.qtd, preco: i.preco
+        }));
+        const subtotal = calcularSubtotalItensSnapshotPedido(itens);
+        const desconto = extrairDescontosTotaisPedido(p.Cupom || '');
+        const totalGravado = converterValorParaNumero(p.Total_Final);
+        const bate = itens.length && itens.every(i => i.precoUnitario > 0) && Math.abs(Math.max(0, subtotal - desconto) - totalGravado) <= 0.05;
+        (bate ? ok : divergentes).push({ p, itens, subtotal, totalGravado });
+    });
+
+    console.log(`Pedidos sem itens congelados: ${pendentes.length} | prontos: ${ok.length} | divergentes: ${divergentes.length}`);
+    if (divergentes.length) console.table(divergentes.map(d => ({ id: d.p.ID_do_Pedido, cliente: d.p.Nome_Cliente, somaItens: d.subtotal, totalGravado: d.totalGravado })));
+    if (!gravar) { console.log('Simulação apenas. Para gravar: await window.congelarItensPedidosAntigos(true)'); return { ok: ok.length, divergentes: divergentes.length }; }
+
+    for (let i = 0; i < ok.length; i += 20) {
+        await Promise.all(ok.slice(i, i + 20).map(({ p, itens, subtotal }) =>
+            updateDoc(doc(db, "pedidos", p._docId || p.ID_do_Pedido), {
+                Itens: itens,
+                Subtotal_Itens: formatarNumeroMoedaPedido(subtotal),
+                itensCongeladosEm: Date.now()
+            })
+        ));
+    }
+    console.log(`${ok.length} pedido(s) congelado(s).`);
+    return { ok: ok.length, divergentes: divergentes.length };
+};
 
 function getPedidosSelecionadosOuFiltrados() {
     const selecionados = window.todosPedidos.filter(p => window.ticketsSelecionados.has(p.ID_do_Pedido));
@@ -5077,7 +5666,10 @@ window.gerarResumoItens = function() {
 
     const agrupados = {};
     pedidos.forEach(p => {
-        extrairItensResumoPedido(p.Resumo_dos_Itens || '').forEach(item => {
+        const itensPedido = getItensCongeladosPedido(p)
+            ?.map(i => ({ categoria: i.categoria, nome: i.nome, qtd: i.qtd, preco: i.precoUnitario, total: i.total }))
+            || extrairItensResumoPedido(p.Resumo_dos_Itens || '');
+        itensPedido.forEach(item => {
             const cat = item.categoria || 'Sem categoria';
             const chave = `${cat}|||${item.nome.toLowerCase()}|||${Number(item.preco || 0).toFixed(2)}`;
             if (!agrupados[cat]) agrupados[cat] = {};
@@ -5209,12 +5801,191 @@ window.filtrarEsteMes = function() {
     window.atualizarDisplayData(); window.renderCalendar(); window.aplicarFiltroData(); 
 };
 
-window.filtrarProximoMes = function() { 
-    const hj = new Date(), mA = hj.getMonth() + 1, aA = hj.getFullYear(); 
-    window.dataInicialIntervalo = new Date(aA, mA, 1, 0,0,0,0); 
-    window.dataFinalIntervalo = new Date(aA, mA + 1, 0, 0,0,0,0); 
-    window.atualizarDisplayData(); window.renderCalendar(); window.aplicarFiltroData(); 
+window.filtrarProximoMes = function() {
+    const hj = new Date(), mA = hj.getMonth() + 1, aA = hj.getFullYear();
+    window.dataInicialIntervalo = new Date(aA, mA, 1, 0,0,0,0);
+    window.dataFinalIntervalo = new Date(aA, mA + 1, 0, 0,0,0,0);
+    window.atualizarDisplayData(); window.renderCalendar(); window.aplicarFiltroData();
 };
+
+window.filtrarMesAnterior = function() {
+    const hj = new Date(), mA = hj.getMonth() - 1, aA = hj.getFullYear();
+    window.dataInicialIntervalo = new Date(aA, mA, 1, 0,0,0,0);
+    window.dataFinalIntervalo = new Date(aA, mA + 1, 0, 0,0,0,0);
+    window.atualizarDisplayData(); window.renderCalendar(); window.aplicarFiltroData();
+};
+
+// === GASTOS 2026-08: popup de filtro de PERÍODO (intervalo de datas real, no mesmo
+// fluxo/formato do filtro de Data de Entrega de Pedidos: "01/07/2026 - 08/07/2026").
+// Este filtro só é usado/visível na sub-aba "Lançamentos". A grade "Gastos Cadastrados"
+// (Jan-Dez) continua funcionando por ano cheio, via os selects ocultos #gastos-mes-filtro/
+// #gastos-ano, que ficam sincronizados com o início do período escolhido aqui.
+window.gastosCalendarDate = new Date();
+window.gastosDataInicial = null;
+window.gastosDataFinal = null;
+
+window.garantirOpcaoAnoGastos = function(ano) {
+    const select = document.getElementById('gastos-ano');
+    if (!select) return;
+    const existe = [...select.options].some(o => Number(o.value) === Number(ano));
+    if (!existe) {
+        const opt = document.createElement('option');
+        opt.value = String(ano);
+        opt.textContent = `Ano: ${ano}`;
+        select.appendChild(opt);
+    }
+};
+
+// Mantém #gastos-mes-filtro/#gastos-ano (usados só pela grade "Gastos Cadastrados",
+// que mostra o ano inteiro) alinhados com o início do período escolhido em Lançamentos.
+window.sincronizarMesAnoGastosComPeriodo = function() {
+    if (!window.gastosDataInicial) return;
+    window.garantirOpcaoAnoGastos(window.gastosDataInicial.getFullYear());
+    const selMes = document.getElementById('gastos-mes-filtro');
+    const selAno = document.getElementById('gastos-ano');
+    if (selMes) selMes.value = String(window.gastosDataInicial.getMonth() + 1);
+    if (selAno) selAno.value = String(window.gastosDataInicial.getFullYear());
+};
+
+window.atualizarDisplayDataGastos = function() {
+    const display = document.getElementById('gastos-date-filter-display');
+    if (!display) return;
+    const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    if (window.gastosDataInicial && window.gastosDataFinal) {
+        display.value = `${fmt(window.gastosDataInicial)} - ${fmt(window.gastosDataFinal)}`;
+    } else if (window.gastosDataInicial) {
+        display.value = fmt(window.gastosDataInicial);
+    } else {
+        display.value = '';
+    }
+};
+
+window.aplicarFiltroPeriodoGastos = function() {
+    if (!window.gastosDataInicial) return;
+    if (!window.gastosDataFinal) window.gastosDataFinal = new Date(window.gastosDataInicial);
+    window.atualizarDisplayDataGastos();
+    window.closeGastosDatePicker();
+    window.renderGastosPlanilha();
+};
+
+window.openGastosDatePicker = function() {
+    window.gastosCalendarDate = window.gastosDataInicial
+        ? new Date(window.gastosDataInicial.getFullYear(), window.gastosDataInicial.getMonth(), 1)
+        : new Date();
+    document.getElementById('gastos-date-picker-modal').style.display = 'flex';
+    window.renderGastosCalendarPopup();
+};
+
+window.closeGastosDatePicker = function() {
+    document.getElementById('gastos-date-picker-modal').style.display = 'none';
+};
+
+window.mudarMesGastosCalendar = function(delta) {
+    window.gastosCalendarDate.setMonth(window.gastosCalendarDate.getMonth() + delta);
+    window.renderGastosCalendarPopup();
+};
+
+window.renderGastosCalendarPopup = function() {
+    const cg = document.getElementById('gastos-calendar-grid');
+    if (!cg) return;
+    const y = window.gastosCalendarDate.getFullYear(), m = window.gastosCalendarDate.getMonth();
+    const nomesCompletos = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const displayEl = document.getElementById('gastos-month-year-display');
+    if (displayEl) displayEl.textContent = `${nomesCompletos[m]} ${y}`;
+
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+    cg.innerHTML = '';
+    ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].forEach(d => cg.innerHTML += `<div class="date-picker-weekday">${d}</div>`);
+    const fD = new Date(y, m, 1).getDay(), dM = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < fD; i++) cg.innerHTML += `<div class="date-picker-empty"></div>`;
+    for (let d = 1; d <= dM; d++) {
+        const cD = new Date(y, m, d, 0, 0, 0, 0);
+        const el = document.createElement('div');
+        el.className = 'date-picker-day';
+        el.textContent = d;
+        el.onclick = (e) => { e.stopPropagation(); window.selecionarDataGastos(y, m, d); };
+        if (cD.getTime() === hoje.getTime()) el.classList.add('today');
+        if (window.gastosDataInicial && window.gastosDataFinal) {
+            if (cD.getTime() === window.gastosDataInicial.getTime()) el.classList.add('range-start');
+            else if (cD.getTime() === window.gastosDataFinal.getTime()) el.classList.add('range-end');
+            else if (cD >= window.gastosDataInicial && cD <= window.gastosDataFinal) el.classList.add('in-range');
+        } else if (window.gastosDataInicial && cD.getTime() === window.gastosDataInicial.getTime()) {
+            el.classList.add('selected');
+        }
+        cg.appendChild(el);
+    }
+};
+
+// Seleção em 2 cliques (início/fim), igual ao calendário de Data de Entrega de Pedidos.
+window.selecionarDataGastos = function(y, m, d) {
+    const sD = new Date(y, m, d, 0, 0, 0, 0);
+
+    if (window.gastosDataInicial && window.gastosDataFinal) {
+        window.gastosDataInicial = sD;
+        window.gastosDataFinal = null;
+    } else if (!window.gastosDataInicial) {
+        window.gastosDataInicial = sD;
+        window.gastosDataFinal = null;
+    } else if (!window.gastosDataFinal) {
+        if (sD < window.gastosDataInicial) {
+            window.gastosDataFinal = new Date(window.gastosDataInicial);
+            window.gastosDataInicial = sD;
+        } else {
+            window.gastosDataFinal = sD;
+        }
+    }
+
+    window.atualizarDisplayDataGastos();
+    window.renderGastosCalendarPopup();
+
+    if (window.gastosDataInicial && window.gastosDataFinal) {
+        window.aplicarFiltroPeriodoGastos();
+    }
+};
+
+window.gastosFiltrarEsteMes = function() {
+    const hj = new Date();
+    window.gastosDataInicial = new Date(hj.getFullYear(), hj.getMonth(), 1, 0,0,0,0);
+    window.gastosDataFinal = new Date(hj.getFullYear(), hj.getMonth() + 1, 0, 0,0,0,0);
+    window.aplicarFiltroPeriodoGastos();
+};
+
+window.gastosFiltrarMesAnterior = function() {
+    const hj = new Date();
+    const ref = new Date(hj.getFullYear(), hj.getMonth() - 1, 1);
+    window.gastosDataInicial = new Date(ref.getFullYear(), ref.getMonth(), 1, 0,0,0,0);
+    window.gastosDataFinal = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 0,0,0,0);
+    window.aplicarFiltroPeriodoGastos();
+};
+
+window.gastosFiltrarEstaSemana = function() {
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const diaSemana = hoje.getDay();
+    const diff = hoje.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1);
+    const segunda = new Date(hoje); segunda.setDate(diff);
+    const domingo = new Date(segunda); domingo.setDate(segunda.getDate() + 6);
+    window.gastosDataInicial = segunda; window.gastosDataFinal = domingo;
+    window.aplicarFiltroPeriodoGastos();
+};
+
+window.gastosFiltrarSemanaPassada = function() {
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const diaSemana = hoje.getDay();
+    const diff = hoje.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1) - 7;
+    const segunda = new Date(hoje); segunda.setDate(diff);
+    const domingo = new Date(segunda); domingo.setDate(segunda.getDate() + 6);
+    window.gastosDataInicial = segunda; window.gastosDataFinal = domingo;
+    window.aplicarFiltroPeriodoGastos();
+};
+
+// Inicializa o período padrão (mês atual) já no carregamento, pra Lançamentos/Exportar
+// mostrarem algo sensato antes de qualquer interação do usuário com o filtro.
+(function inicializarPeriodoGastosPadrao() {
+    const hj = new Date();
+    window.gastosDataInicial = new Date(hj.getFullYear(), hj.getMonth(), 1, 0,0,0,0);
+    window.gastosDataFinal = new Date(hj.getFullYear(), hj.getMonth() + 1, 0, 0,0,0,0);
+})();
 
 window.limparFiltros = function() { document.getElementById('search-input-pedidos').value = ''; document.getElementById('date-input').value = ''; document.getElementById('date-filter-display').value = ''; document.getElementById('filter-status-pagamento').value = ''; document.getElementById('filter-forma-pagamento').value = ''; document.getElementById('filter-observacao').value = ''; window.dataInicialIntervalo = null; window.dataFinalIntervalo = null; window.filtrarPedidos(); }
 window.mudarMes = function(delta) { window.currentCalendarDate.setMonth(window.currentCalendarDate.getMonth() + delta); window.renderCalendar(); }
@@ -6553,11 +7324,13 @@ if (formCupom) {
 }
 
 
-async function init() { 
-    window.addVariation(false); 
-    await syncCats(); 
-    await loadProds(); 
-    loadAvisos(); 
+async function init() {
+    window.addVariation(false);
+    // OTIMIZAÇÃO: categorias e produtos não dependem um do outro, então podem
+    // ser buscados em paralelo em vez de esperar um terminar pra começar o outro.
+    // Isso reduz o tempo até o painel ficar utilizável no carregamento inicial.
+    await Promise.all([syncCats(), loadProds()]);
+    loadAvisos();
     loadTema(); 
     loadCarrossel(); 
     window.inicializarKanban(); 
@@ -6742,7 +7515,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
             <div><label>Marca</label><input class="gasto-lanc-marca" type="text" placeholder="Ex: Deline"></div>
             <div><label>Kg/L</label><input class="gasto-lanc-peso" type="text" placeholder="Ex: 1kg ou 1L"></div>
             <div><label>Quantidade</label><input class="gasto-lanc-qtd" type="number" min="0" step="0.001" value="1" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
-            <div><label>Valor unidade</label><input class="gasto-lanc-unit" type="number" min="0" step="0.01" placeholder="0,00" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
+            <div><label>Unidade</label><input class="gasto-lanc-unit" type="number" min="0" step="0.01" placeholder="0,00" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
             <div><label>Valor total</label><input class="gasto-lanc-total" type="number" min="0" step="0.01" placeholder="0,00"></div>
             <div><label>Comprador</label><select class="gasto-lanc-comprador"><option value="Caixa">Caixa</option><option value="Arabela">Arabela</option><option value="Flávio">Flávio</option></select></div>
             <div><label>Data</label><input class="gasto-lanc-data" type="date" value="${dataPadrao}"></div>
@@ -6875,9 +7648,62 @@ window.preencherLancamentoGasto = function(lancId) {
 };
 
 window.excluirLancamentoGasto = function(lancId) {
-    customConfirm('Excluir este lançamento de gasto?', async () => {
-        try { await deleteDoc(doc(db, 'gastos_lancamentos', lancId)); window.showToast('Lançamento excluído!'); }
-        catch(e) { console.error(e); window.showToast('Erro ao excluir lançamento.', true); }
+    const l = allGastosLancamentos.find(x => x.id === lancId);
+    const ehParcelado = !!(l && l.parcelaGrupoId && Number(l.parcelaTotal) > 1);
+
+    if (!ehParcelado) {
+        customConfirm('Excluir este lançamento de gasto?', async () => {
+            try { await deleteDoc(doc(db, 'gastos_lancamentos', lancId)); window.showToast('Lançamento excluído!'); }
+            catch(e) { console.error(e); window.showToast('Erro ao excluir lançamento.', true); }
+        });
+        return;
+    }
+
+    window.abrirConfirmExclusaoParcelaGasto(l);
+};
+
+// NOVO (2026-08): lançamento parcelado - oferece excluir só esta parcela ou todas as
+// parcelas do mesmo grupo (parcelaGrupoId), em vez de excluir sempre uma por uma.
+window.abrirConfirmExclusaoParcelaGasto = function(l) {
+    const membros = allGastosLancamentos.filter(x => x.parcelaGrupoId === l.parcelaGrupoId);
+    const total = l.parcelaTotal || membros.length || 1;
+
+    const msgEl = document.getElementById('excl-parc-msg');
+    if (msgEl) msgEl.textContent = `Esta compra está parcelada em ${total}x (parcela ${l.parcelaAtual || 1} de ${total}). O que deseja excluir?`;
+
+    window.openModal('modal-excluir-parcela-gasto');
+
+    const btnUma = document.getElementById('excl-parc-btn-uma');
+    const btnTodas = document.getElementById('excl-parc-btn-todas');
+    if (!btnUma || !btnTodas) return;
+
+    // Clona os botões pra remover listeners de aberturas anteriores (mesmo padrão do customConfirm).
+    const novoBtnUma = btnUma.cloneNode(true);
+    btnUma.parentNode.replaceChild(novoBtnUma, btnUma);
+    const novoBtnTodas = btnTodas.cloneNode(true);
+    btnTodas.parentNode.replaceChild(novoBtnTodas, btnTodas);
+
+    novoBtnUma.addEventListener('click', async () => {
+        window.closeModal('modal-excluir-parcela-gasto');
+        try {
+            await deleteDoc(doc(db, 'gastos_lancamentos', l.id));
+            window.showToast('Parcela excluída!');
+        } catch(e) {
+            console.error(e);
+            window.showToast('Erro ao excluir lançamento.', true);
+        }
+    });
+
+    novoBtnTodas.addEventListener('click', async () => {
+        window.closeModal('modal-excluir-parcela-gasto');
+        try {
+            const membrosAtuais = allGastosLancamentos.filter(x => x.parcelaGrupoId === l.parcelaGrupoId);
+            await Promise.all(membrosAtuais.map(m => deleteDoc(doc(db, 'gastos_lancamentos', m.id))));
+            window.showToast(`${membrosAtuais.length} parcelas excluídas!`);
+        } catch(e) {
+            console.error(e);
+            window.showToast('Erro ao excluir as parcelas.', true);
+        }
     });
 };
 
@@ -6921,27 +7747,13 @@ function calcularTotaisGastosPorPeriodoFechamento() {
     return totais;
 }
 
-window.inicializarGastos = function() {
-    const select = document.getElementById('gastos-ano');
-    if (select && !select.innerHTML) {
-        const anoAtual = new Date().getFullYear();
-        select.innerHTML = Array.from({ length: 11 }, (_, i) => anoAtual - 5 + i).reverse().map(a => `<option value="${a}">Ano: ${a}</option>`).join('');
-        select.value = String(anoAtual);
-    }
-
-    onSnapshot(collection(db, 'gastos_itens'), snap => {
-        allGastosItens = [];
-        snap.forEach(d => allGastosItens.push({ id: d.id, ...d.data() }));
-        window.renderGastosPlanilha?.();
-    });
-
-    onSnapshot(collection(db, 'gastos_lancamentos'), snap => {
-        allGastosLancamentos = [];
-        snap.forEach(d => allGastosLancamentos.push({ id: d.id, ...d.data() }));
-        window.renderGastosPlanilha?.();
-        if (document.getElementById('modal-fechamento-financeiro')?.style.display === 'flex') window.calcularDivisaoFechamento?.();
-    });
-};
+// NOTA (limpeza de performance): existia aqui uma segunda definição de
+// window.inicializarGastos, idêntica em espírito à definição mais completa
+// que está abaixo (perto de "EXPORTAR PEDIDOS PARA EXCEL/CSV"). Como JS usa
+// a última atribuição feita a window.inicializarGastos, essa primeira versão
+// nunca era executada — era código morto que só aumentava o tamanho do
+// arquivo e registrava listeners que seriam imediatamente substituídos.
+// Foi removida; a versão funcional continua mais abaixo no arquivo.
 
 
 
@@ -7015,7 +7827,7 @@ window.criarLinhaLancamentoGastoHTML = function(dados = {}) {
         </div>
         <div><label>Kg/L</label><input class="gasto-lanc-peso" type="text" placeholder="Ex: 1kg ou 1L" value="${escapeHTMLGasto(dados.peso || '')}"></div>
         <div><label>Quantidade</label><input class="gasto-lanc-qtd" type="number" min="0" step="0.001" value="${escapeHTMLGasto(qtd)}" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
-        <div><label>Valor unidade</label><input class="gasto-lanc-unit" type="number" min="0" step="0.01" placeholder="0,00" value="${escapeHTMLGasto(unit)}" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
+        <div><label>Unidade</label><input class="gasto-lanc-unit" type="number" min="0" step="0.01" placeholder="0,00" value="${escapeHTMLGasto(unit)}" oninput="window.atualizarTotalLancamentoGasto(this)"></div>
         <div><label>Valor total</label><input class="gasto-lanc-total" type="number" min="0" step="0.01" placeholder="0,00" value="${Number(total || 0).toFixed(2)}" readonly></div>
         <div><label>Comprador</label><select class="gasto-lanc-comprador"><option value="Caixa" ${comprador === 'Caixa' ? 'selected' : ''}>Caixa</option><option value="Arabela" ${comprador === 'Arabela' ? 'selected' : ''}>Arabela</option><option value="Flávio" ${comprador === 'Flávio' ? 'selected' : ''}>Flávio</option></select></div>
         <div><label>Data</label><input class="gasto-lanc-data" type="date" value="${escapeHTMLGasto(data)}"></div>
@@ -7859,7 +8671,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                 <th>Marca</th>
                 <th>Kg/L</th>
                 <th>Quantidade</th>
-                <th>Valor unidade</th>
+                <th>Unidade</th>
                 <th>Total</th>
                 <th>Comprador</th>
                 <th>Data</th>
@@ -8033,8 +8845,10 @@ window.salvarItemGastoModal = async function(event) {
 window.limparFiltrosGastos = function() {
     const filtroItem = document.getElementById('gastos-filtro-item');
     if (filtroItem) filtroItem.value = '';
-    const ano = document.getElementById('gastos-ano');
-    if (ano) ano.value = String(new Date().getFullYear());
+    const hj = new Date();
+    window.gastosDataInicial = new Date(hj.getFullYear(), hj.getMonth(), 1, 0,0,0,0);
+    window.gastosDataFinal = new Date(hj.getFullYear(), hj.getMonth() + 1, 0, 0,0,0,0);
+    window.atualizarDisplayDataGastos?.();
     window.fecharGastosItem();
     window.renderGastosPlanilha();
 };
@@ -8144,7 +8958,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                     <th>Marca</th>
                     <th>Kg/L</th>
                     <th>Quantidade</th>
-                    <th>Valor unidade</th>
+                    <th>Unidade</th>
                     <th>Total</th>
                     <th>Comprador</th>
                     <th>Data</th>
@@ -8265,7 +9079,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                         <th>Marca</th>
                         <th>Kg/L</th>
                         <th>Quantidade</th>
-                        <th>Valor unidade</th>
+                        <th>Unidade</th>
                         <th>Total</th>
                         <th>Comprador</th>
                         <th>Data</th>
@@ -8317,7 +9131,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                             <th>Marca</th>
                             <th>Kg/L</th>
                             <th>Quantidade</th>
-                            <th>Valor unidade</th>
+                            <th>Unidade</th>
                             <th>Total</th>
                             <th>Comprador</th>
                             <th>Data</th>
@@ -8401,7 +9215,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                         <th>Marca</th>
                         <th>Kg/L</th>
                         <th>Quantidade</th>
-                        <th>Valor unidade</th>
+                        <th>Unidade</th>
                         <th>Total</th>
                         <th>Comprador</th>
                         <th>Data</th>
@@ -8453,7 +9267,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                             <th>Marca</th>
                             <th>Kg/L</th>
                             <th>Quantidade</th>
-                            <th>Valor unidade</th>
+                            <th>Unidade</th>
                             <th>Total</th>
                             <th>Comprador</th>
                             <th>Data</th>
@@ -8491,7 +9305,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
             <th>Marca</th>
             <th>Kg/L</th>
             <th>Quantidade</th>
-            <th>Valor unidade</th>
+            <th>Unidade</th>
             <th>Total</th>
             <th>Comprador</th>
             <th>Data</th>
@@ -8653,7 +9467,7 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
             <th>Marca</th>
             <th>Kg/L</th>
             <th>Quantidade</th>
-            <th>Valor unidade</th>
+            <th>Unidade</th>
             <th>Total</th>
             <th>Comprador</th>
             <th>Data</th>
@@ -8856,9 +9670,9 @@ window.renderGastosPlanilha = function() {
         const nomeSeguro = escapeHTMLGasto(item.nome || '');
 
         html += `<tr class="gastos-rebuild-row" data-gasto-item-row="${item.id}">
-            <td>
+            <td data-label="Item:">
                 <div class="gastos-rebuild-item-main">
-                    <input class="gastos-item-nome-inline" value="${nomeSeguro}" 
+                    <input class="gastos-item-nome-inline" value="${nomeSeguro}"
                         title="Clique para alterar o nome"
                         onblur="window.renomearCategoriaGastoInline(this, '${item.id}')"
                         onkeydown="if(event.key === 'Enter'){this.blur();}">
@@ -8871,13 +9685,13 @@ window.renderGastosPlanilha = function() {
             const r = resumo[mes];
             totaisMes[mes] += r.total;
             const ativo = gastosItemAberto === item.id && Number(gastosMesAberto) === mes ? ' active' : '';
-            html += `<td class="gastos-rebuild-month-cell${ativo}" onclick="window.abrirGastosItem('${item.id}', ${mes})">
+            html += `<td class="gastos-rebuild-month-cell${ativo}" data-label="${meses[mes - 1]}:" onclick="window.abrirLancamentosDoMes('${item.id}', ${mes})">
                 <span class="gastos-rebuild-money">${formatarMoedaGasto(r.total || 0)}</span>
                 <span class="gastos-rebuild-qty">${r.qtd ? `${r.qtd.toLocaleString('pt-BR')} un.` : '0 un.'}</span>
             </td>`;
         }
 
-        html += `<td>
+        html += `<td data-label="Ações:">
             <div class="action-btns-wrapper gastos-rebuild-row-actions">
                 <button class="btn-action copy" title="Copiar item" onclick="window.copiarItemGasto('${item.id}')"><i class="fas fa-copy"></i></button>
                 <button class="btn-action del" title="Excluir item" onclick="window.excluirItemGasto('${item.id}')"><i class="fas fa-trash"></i></button>
@@ -8890,9 +9704,14 @@ window.renderGastosPlanilha = function() {
     });
 
     html += `<tr class="gastos-rebuild-total-row">
-        <td>TOTAL MENSAL</td>`;
-    for (let mes = 1; mes <= 12; mes++) html += `<td><span>${formatarMoedaGasto(totaisMes[mes] || 0)}</span></td>`;
-    html += `<td>
+        <td data-label="">TOTAL MENSAL</td>`;
+    // CORREÇÃO (achado ao testar em celular real): estas células de mês não tinham a classe
+    // "gastos-rebuild-month-cell" que as células de mês das linhas de item têm. No celular,
+    // o CSS usa essa classe pra esconder os 11 meses que não são o mês filtrado - sem ela,
+    // esta linha de total sempre mostrava os 12 meses inteiros, espremidos. Adicionando a
+    // mesma classe aqui, a linha de total passa a respeitar o filtro de mês igual às outras.
+    for (let mes = 1; mes <= 12; mes++) html += `<td class="gastos-rebuild-month-cell" data-label="${meses[mes - 1]}:"><span>${formatarMoedaGasto(totaisMes[mes] || 0)}</span></td>`;
+    html += `<td data-label="Total anual:">
         <div class="gastos-total-anual-geral">
             <small>TOTAL ANUAL</small>
             <strong>${formatarMoedaGasto(totalAnoGeral || 0)}</strong>
@@ -8982,7 +9801,7 @@ window.atualizarBotaoExcluirMarcaGasto = function(select) {
 };
 
 window.atualizarBotoesExcluirMarcaGasto = function(scope = document) {
-    (scope || document).querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select').forEach(sel => {
+    (scope || document).querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select, .gasto-lote-marca-select, #edit-lanc-marca').forEach(sel => {
         window.atualizarBotaoExcluirMarcaGasto(sel);
     });
 };
@@ -9024,7 +9843,7 @@ window.garantirMarcaGasto = async function(marca) {
 };
 
 window.atualizarSelectsMarcaGasto = function() {
-    document.querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select').forEach(sel => {
+    document.querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select, .gasto-lote-marca-select, #edit-lanc-marca').forEach(sel => {
         const atual = sel.value;
         sel.innerHTML = window.renderOptionsMarcaGasto(atual);
         if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
@@ -9057,7 +9876,7 @@ window.excluirMarcaSelecionadaGasto = function(botao) {
             console.warn('Marca ocultada da lista, mas não foi possível apagar todos os registros:', e);
         }
 
-        document.querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select').forEach(sel => {
+        document.querySelectorAll('#t-gastos .gasto-lanc-marca-select, #t-gastos .gasto-list-marca-select, .gasto-lote-marca-select, #edit-lanc-marca').forEach(sel => {
             if (window.normalizarMarcaGasto(sel.value) === chave) sel.value = '';
             sel.innerHTML = window.renderOptionsMarcaGasto(sel.value);
             window.toggleMarcaOutrosGasto(sel);
@@ -9252,7 +10071,7 @@ window.excluirLocalSelecionadoGasto = function(botao) {
             console.warn('Local ocultado da lista, mas não foi possível apagar todos os registros:', e);
         }
 
-        document.querySelectorAll('#t-gastos .gasto-lanc-local-select, #t-gastos .gasto-list-local-select').forEach(sel => {
+        document.querySelectorAll('#t-gastos .gasto-lanc-local-select, #t-gastos .gasto-list-local-select, .gasto-lote-local-select, #edit-lanc-local, #gasto-lote-local-unico').forEach(sel => {
             if (window.normalizarLocalGasto(sel.value) === chave) sel.value = '';
             sel.innerHTML = window.renderOptionsLocalGasto(sel.value);
             window.toggleLocalOutrosGasto(sel);
@@ -9322,6 +10141,12 @@ window.criarLinhaLancamentoGastoHTML = function(dados = {}) {
         <td><input class="gasto-lanc-total" type="number" min="0" step="0.01" placeholder="0,00" value="${Number(total || 0).toFixed(2)}" readonly></td>
         <td><select class="gasto-lanc-comprador"><option value="Caixa" ${comprador === 'Caixa' ? 'selected' : ''}>Caixa</option><option value="Arabela" ${comprador === 'Arabela' ? 'selected' : ''}>Arabela</option><option value="Flávio" ${comprador === 'Flávio' ? 'selected' : ''}>Flávio</option></select></td>
         <td><input class="gasto-lanc-data" type="date" value="${escapeHTMLGasto(data)}"></td>
+        <td>
+            <div class="gasto-nota-wrap">
+                <input class="gasto-lanc-nota" type="text" placeholder="Link da NF" value="${escapeHTMLGasto(dados.notaFiscalUrl || '')}">
+                <button type="button" class="gastos-icon-btn copy" onclick="window.abrirNotaFiscalGasto(this)" title="Abrir nota fiscal"><i class="fas fa-file-invoice"></i></button>
+            </div>
+        </td>
         <td class="gastos-acoes-cell">
             <button class="gastos-icon-btn danger gastos-remover-linha" type="button" onclick="window.removerLinhaLancamentoGasto(this)" title="Remover linha"><i class="fas fa-trash"></i></button>
         </td>
@@ -9349,6 +10174,7 @@ window.salvarLancamentosGasto = async function(itemId) {
             const valorTotal = quantidade * valorUnidade;
             const comprador = row.querySelector('.gasto-lanc-comprador')?.value || 'Caixa';
             const dataCompra = row.querySelector('.gasto-lanc-data')?.value || dataDefaultGasto(gastosMesAberto, getAnoGastosSelecionado());
+            const notaFiscalUrl = row.querySelector('.gasto-lanc-nota')?.value.trim() || '';
 
             const linhaVazia = !marca && !localCompra && !peso && !quantidade && !valorUnidade;
             if (linhaVazia) continue;
@@ -9373,6 +10199,7 @@ window.salvarLancamentosGasto = async function(itemId) {
                 valorTotal,
                 comprador,
                 dataCompra,
+                notaFiscalUrl,
                 ano: dataObj ? dataObj.getFullYear() : getAnoGastosSelecionado(),
                 mes: dataObj ? dataObj.getMonth() + 1 : gastosMesAberto,
                 updatedAt: Date.now()
@@ -9408,6 +10235,7 @@ window.salvarCampoLancamentoGasto = async function(lancId, elemento) {
     const valorTotal = quantidade * valorUnidade;
     const comprador = row.querySelector('.gasto-list-comprador')?.value || 'Caixa';
     const dataCompra = row.querySelector('.gasto-list-data')?.value || l.dataCompra;
+    const notaFiscalUrl = row.querySelector('.gasto-list-nota')?.value.trim() ?? l.notaFiscalUrl ?? '';
 
     if (!marca) return window.showToast('Preencha a marca.', true);
 
@@ -9427,6 +10255,7 @@ window.salvarCampoLancamentoGasto = async function(lancId, elemento) {
             valorTotal,
             comprador,
             dataCompra,
+            notaFiscalUrl,
             ano: dataObj ? dataObj.getFullYear() : l.ano,
             mes: dataObj ? dataObj.getMonth() + 1 : l.mes,
             updatedAt: Date.now()
@@ -9457,10 +10286,11 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
             <th>Local</th>
             <th>Kg/L</th>
             <th>Quantidade</th>
-            <th>Valor unidade</th>
+            <th>Unidade</th>
             <th>Total</th>
             <th>Comprador</th>
             <th>Data</th>
+            <th>Nota Fiscal</th>
             <th>Ações</th>
         </tr></thead>`;
 
@@ -9482,6 +10312,12 @@ window.renderGastosDrawer = function(item, mesAtivo, ano, meses) {
                             <td><strong class="gasto-list-total">${formatarMoedaGasto(l.valorTotal)}</strong></td>
                             <td><select class="gasto-list-comprador" onchange="window.salvarCampoLancamentoGasto('${l.id}', this)"><option value="Caixa" ${l.comprador === 'Caixa' ? 'selected' : ''}>Caixa</option><option value="Arabela" ${l.comprador === 'Arabela' ? 'selected' : ''}>Arabela</option><option value="Flávio" ${l.comprador === 'Flávio' ? 'selected' : ''}>Flávio</option></select></td>
                             <td><input class="gasto-list-data" type="date" value="${escapeHTMLGasto(l.dataCompra || '')}" onblur="window.salvarCampoLancamentoGasto('${l.id}', this)"></td>
+                            <td>
+                                <div class="gasto-nota-wrap">
+                                    <input class="gasto-list-nota" type="text" placeholder="Link da NF" value="${escapeHTMLGasto(l.notaFiscalUrl || '')}" onblur="window.salvarCampoLancamentoGasto('${l.id}', this)">
+                                    <button type="button" class="gastos-icon-btn copy" onclick="window.abrirNotaFiscalGasto(this)" title="Abrir nota fiscal"><i class="fas fa-file-invoice"></i></button>
+                                </div>
+                            </td>
                             <td class="gastos-acoes-cell">
                                 <div class="gastos-rebuild-lanc-actions">
                                     <button class="gastos-icon-btn copy" title="Copiar lançamento" onclick="window.copiarLancamentoGasto('${l.id}')"><i class="fas fa-copy"></i></button>
@@ -9534,6 +10370,12 @@ window.copiarLancamentoGasto = async function(lancId) {
     if (!l) return copiarLancamentoGastoLocalCompraOriginal?.(lancId);
     const copia = { ...l, id: '', createdAt: Date.now(), updatedAt: Date.now() };
     delete copia.id;
+    // Uma cópia é um lançamento novo e independente — não deve herdar o vínculo de parcelamento.
+    delete copia.parcelaGrupoId;
+    delete copia.parcelaAtual;
+    delete copia.parcelaTotal;
+    delete copia.parcelaValorTotalOriginal;
+    delete copia.parcelaValorUnidadeOriginal;
     try {
         await addDoc(collection(db, 'gastos_lancamentos'), copia);
         window.showToast('Lançamento copiado!');
@@ -9967,3 +10809,1719 @@ window.adicionarLinhaLancamentoGasto = function(...args) {
 
 setTimeout(() => window.ajustarCamposNovaMarcaGasto(document), 300);
 
+
+
+
+// ==========================================
+// NOVO (2026-08): Nota Fiscal, Lançar Vários Gastos e Exportar Mês
+// Tudo abaixo é adição pura — nenhuma função existente acima foi removida.
+// ==========================================
+
+// Abre o link salvo no campo "Nota Fiscal" (usado na linha nova, na lista de já lançados e no lote).
+window.abrirNotaFiscalGasto = function(botao) {
+    const wrap = botao.closest('.gasto-nota-wrap');
+    const input = wrap ? wrap.querySelector('input') : null;
+    const url = String(input?.value || '').trim();
+    if (!url) {
+        input?.focus();
+        return window.showToast('Cole o link da nota fiscal primeiro.', true);
+    }
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    window.open(href, '_blank', 'noopener');
+};
+
+window.GASTOS_NOMES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+window.formatarDataCurtaGasto = function(iso) {
+    const partes = String(iso || '').split('-');
+    if (partes.length !== 3) return iso || '-';
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+};
+
+// ==========================================
+// NOVO (2026-08): opção "+ Adicionar" nos selects de Item/Marca/Local do fluxo de lançamento
+// (substitui "Outros" — cadastra direto, sem sair da tela)
+// ==========================================
+window.SENTINELA_ADICIONAR_GASTO = '__adicionar__';
+
+window.renderOptionsMarcaGasto = function(marcaSelecionada = '') {
+    const marcas = window.marcasGastosDisponiveis();
+    const atual = String(marcaSelecionada || '').trim();
+    const chaveAtual = window.normalizarMarcaGasto(atual);
+
+    let html = `<option value="" ${!atual ? 'selected' : ''}>Selecione...</option>`;
+    html += `<option value="${window.SENTINELA_ADICIONAR_GASTO}">+ Adicionar marca</option>`;
+    marcas.forEach(m => {
+        const selected = window.normalizarMarcaGasto(m) === chaveAtual ? 'selected' : '';
+        html += `<option value="${escapeHTMLGasto(m)}" ${selected}>${escapeHTMLGasto(m)}</option>`;
+    });
+    return html;
+};
+
+window.renderOptionsLocalGasto = function(localSelecionado = '') {
+    const locais = window.locaisGastosDisponiveis();
+    const atual = String(localSelecionado || '').trim();
+    const chaveAtual = window.normalizarLocalGasto ? window.normalizarLocalGasto(atual) : atual.toLowerCase();
+
+    let html = `<option value="" ${!atual ? 'selected' : ''}>Selecione...</option>`;
+    html += `<option value="${window.SENTINELA_ADICIONAR_GASTO}">+ Adicionar local</option>`;
+    locais.forEach(l => {
+        const chave = window.normalizarLocalGasto ? window.normalizarLocalGasto(l) : String(l).toLowerCase();
+        const selected = chave === chaveAtual ? 'selected' : '';
+        html += `<option value="${escapeHTMLGasto(l)}" ${selected}>${escapeHTMLGasto(l)}</option>`;
+    });
+    return html;
+};
+
+window.atualizarTodosSelectsMarcaGasto = function(nomeParaSelecionar, selectOrigem) {
+    document.querySelectorAll('.gasto-lote-marca-select, #edit-lanc-marca').forEach(sel => {
+        const manterValor = sel === selectOrigem ? nomeParaSelecionar : sel.value;
+        sel.innerHTML = window.renderOptionsMarcaGasto(manterValor);
+        window.atualizarBotaoExcluirMarcaGasto?.(sel);
+    });
+};
+
+window.atualizarTodosSelectsLocalGasto = function(nomeParaSelecionar, selectOrigem) {
+    document.querySelectorAll('.gasto-lote-local-select, #edit-lanc-local, #gasto-lote-local-unico').forEach(sel => {
+        const manterValor = sel === selectOrigem ? nomeParaSelecionar : sel.value;
+        sel.innerHTML = window.renderOptionsLocalGasto(manterValor);
+        window.atualizarBotaoExcluirLocalGasto?.(sel);
+    });
+};
+
+// Encontra, a partir do <select>, o campo de texto "+ Adicionar" (input escondido logo
+// após o wrap do select) usado para cadastrar item/marca/local sem sair da tela.
+window.encontrarInputNovoValorGasto = function(select, wrapClass, inputClass) {
+    const wrap = select?.closest?.(`.${wrapClass}`);
+    const input = wrap?.nextElementSibling;
+    return (input && input.classList && input.classList.contains(inputClass)) ? input : null;
+};
+
+window.tratarSelecaoMarcaGasto = function(select) {
+    const input = window.encontrarInputNovoValorGasto(select, 'gasto-marca-select-wrap', 'gasto-marca-novo-input');
+    if (select.value === window.SENTINELA_ADICIONAR_GASTO) {
+        if (input) { input.style.display = ''; input.value = ''; input.focus(); }
+    } else if (input) {
+        input.style.display = 'none';
+    }
+    window.atualizarBotaoExcluirMarcaGasto?.(select);
+};
+
+window.tratarSelecaoLocalGasto = function(select) {
+    const input = window.encontrarInputNovoValorGasto(select, 'gasto-local-select-wrap', 'gasto-local-novo-input');
+    if (select.value === window.SENTINELA_ADICIONAR_GASTO) {
+        if (input) { input.style.display = ''; input.value = ''; input.focus(); }
+    } else if (input) {
+        input.style.display = 'none';
+    }
+    window.atualizarBotaoExcluirLocalGasto?.(select);
+};
+
+// Confirma o cadastro digitado inline (chamado ao sair do campo ou apertar Enter).
+window.confirmarNovaMarcaGastoInline = async function(inputEl) {
+    const nome = inputEl.value.trim();
+    const wrap = inputEl.previousElementSibling;
+    const select = wrap?.querySelector?.('select');
+    if (!nome) {
+        if (select) select.value = '';
+        inputEl.style.display = 'none';
+        window.atualizarBotaoExcluirMarcaGasto?.(select);
+        return;
+    }
+    try {
+        await window.garantirMarcaGasto(nome);
+        window.atualizarTodosSelectsMarcaGasto(nome, select);
+        inputEl.style.display = 'none';
+        window.showToast('Marca cadastrada!');
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao cadastrar marca.', true);
+    }
+};
+
+window.confirmarNovoLocalGastoInline = async function(inputEl) {
+    const nome = inputEl.value.trim();
+    const wrap = inputEl.previousElementSibling;
+    const select = wrap?.querySelector?.('select');
+    if (!nome) {
+        if (select) select.value = '';
+        inputEl.style.display = 'none';
+        window.atualizarBotaoExcluirLocalGasto?.(select);
+        return;
+    }
+    try {
+        await window.garantirLocalGasto(nome);
+        window.atualizarTodosSelectsLocalGasto(nome, select);
+        inputEl.style.display = 'none';
+        window.showToast('Local cadastrado!');
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao cadastrar local.', true);
+    }
+};
+
+// --- Item: mesmo padrão de "+ Adicionar" inline + exclusão da marca/local, aplicado ao Item ---
+window.garantirItemGasto = async function(nome) {
+    const nomeLimpo = String(nome || '').trim();
+    if (!nomeLimpo) return null;
+
+    const existente = allGastosItens.find(i => String(i.nome || '').trim().toLowerCase() === nomeLimpo.toLowerCase());
+    if (existente) return existente;
+
+    // CORREÇÃO (2026-10): item duplicado na planilha. O Firestore dispara o onSnapshot
+    // com o item novo ANTES do addDoc terminar; depois este código fazia push de novo,
+    // e o item aparecia 2x. Agora só adiciona se o id ainda não estiver na lista, e
+    // chamadas repetidas com o mesmo nome (Enter + blur) reaproveitam a mesma gravação.
+    window.__gastoItensEmCriacao = window.__gastoItensEmCriacao || {};
+    const chave = nomeLimpo.toLowerCase();
+    if (window.__gastoItensEmCriacao[chave]) return window.__gastoItensEmCriacao[chave];
+
+    window.__gastoItensEmCriacao[chave] = (async () => {
+        try {
+            const ref = await addDoc(collection(db, 'gastos_itens'), { nome: nomeLimpo, ordem: Date.now(), createdAt: Date.now() });
+            const jaNaLista = allGastosItens.find(i => i.id === ref.id);
+            if (jaNaLista) return jaNaLista;
+            const novo = { id: ref.id, nome: nomeLimpo, ordem: Date.now(), createdAt: Date.now() };
+            allGastosItens.push(novo);
+            return novo;
+        } catch (e) {
+            console.warn('Não foi possível salvar item novo:', e);
+            return null;
+        } finally {
+            setTimeout(() => { delete window.__gastoItensEmCriacao[chave]; }, 1500);
+        }
+    })();
+    return window.__gastoItensEmCriacao[chave];
+};
+
+window.atualizarBotaoExcluirItemGastoSelect = function(select) {
+    const wrap = select?.closest?.('.gasto-item-select-wrap');
+    const btn = wrap?.querySelector?.('.gasto-item-delete-btn');
+    if (!wrap || !btn) return;
+
+    const cadastrado = !!(select.value && select.value !== window.SENTINELA_ADICIONAR_GASTO);
+    wrap.classList.toggle('has-registered-brand', cadastrado);
+    btn.classList.toggle('visible', cadastrado);
+    btn.style.display = cadastrado ? 'inline-flex' : 'none';
+};
+
+window.atualizarTodosSelectsItemGasto = function(idParaSelecionar, selectOrigem) {
+    document.querySelectorAll('.gasto-lote-item, #edit-lanc-item').forEach(sel => {
+        const manterValor = sel === selectOrigem ? idParaSelecionar : sel.value;
+        sel.innerHTML = window.montarOptionsItensGasto(manterValor);
+        window.atualizarBotaoExcluirItemGastoSelect(sel);
+    });
+};
+
+window.confirmarNovoItemGastoInline = async function(inputEl) {
+    const nome = inputEl.value.trim();
+    const wrap = inputEl.previousElementSibling;
+    const select = wrap?.querySelector?.('select');
+    if (!nome) {
+        if (select) select.value = '';
+        inputEl.style.display = 'none';
+        window.atualizarBotaoExcluirItemGastoSelect(select);
+        return;
+    }
+    const item = await window.garantirItemGasto(nome);
+    if (!item) { window.showToast('Erro ao cadastrar item.', true); return; }
+    window.atualizarTodosSelectsItemGasto(item.id, select);
+    inputEl.style.display = 'none';
+    window.showToast('Item cadastrado!');
+};
+
+window.excluirItemSelecionadoGasto = function(botao) {
+    const wrap = botao.closest('.gasto-item-select-wrap');
+    const select = wrap?.querySelector('select');
+    const itemId = String(select?.value || '').trim();
+    const item = itemId && itemId !== window.SENTINELA_ADICIONAR_GASTO ? getItemGasto(itemId) : null;
+
+    if (!item) {
+        return window.showToast('Selecione um item cadastrado para excluir.', true);
+    }
+
+    customConfirm(`Excluir o item "${item.nome}" e todos os lançamentos vinculados?`, async () => {
+        try {
+            await Promise.all(allGastosLancamentos.filter(l => l.itemId === itemId).map(l => deleteDoc(doc(db, 'gastos_lancamentos', l.id))));
+            await deleteDoc(doc(db, 'gastos_itens', itemId));
+            allGastosItens = allGastosItens.filter(i => i.id !== itemId);
+            window.atualizarTodosSelectsItemGasto('', select);
+            window.showToast('Item excluído!');
+        } catch (e) {
+            console.error(e);
+            window.showToast('Erro ao excluir item.', true);
+        }
+    });
+};
+
+window.aguardarItemGastoDisponivel = function(nome, tentativas = 15) {
+    return new Promise(resolve => {
+        const tentar = (n) => {
+            const item = allGastosItens.find(i => String(i.nome || '').trim().toLowerCase() === nome.toLowerCase());
+            if (item || n <= 0) return resolve(item || null);
+            setTimeout(() => tentar(n - 1), 200);
+        };
+        tentar(tentativas);
+    });
+};
+
+window.tratarSelecaoItemGasto = function(select) {
+    const input = window.encontrarInputNovoValorGasto(select, 'gasto-item-select-wrap', 'gasto-item-novo-input');
+    if (select.value === window.SENTINELA_ADICIONAR_GASTO) {
+        if (input) { input.style.display = ''; input.value = ''; input.focus(); }
+    } else if (input) {
+        input.style.display = 'none';
+    }
+    window.atualizarBotaoExcluirItemGastoSelect(select);
+};
+
+// Após cadastrar um novo Item (via "+ Adicionar" de dentro do lançamento), seleciona-o
+// automaticamente no select que originou o pedido — sem alterar o fluxo normal de "Novo Item".
+const salvarItemGastoModalComSelecaoPendenteOriginal = window.salvarItemGastoModal;
+window.salvarItemGastoModal = async function(event) {
+    const eraEdicao = !!document.getElementById('gasto-item-id')?.value;
+    const nomeDigitado = String(document.getElementById('gasto-item-nome')?.value || '').trim();
+    const retorno = await salvarItemGastoModalComSelecaoPendenteOriginal(event);
+
+    if (!eraEdicao && nomeDigitado && window.__gastoItemSelectPendente) {
+        const select = window.__gastoItemSelectPendente;
+        window.__gastoItemSelectPendente = null;
+        const item = await window.aguardarItemGastoDisponivel(nomeDigitado);
+        if (item && select && document.body.contains(select)) {
+            if (!Array.from(select.options).some(o => o.value === item.id)) {
+                select.insertAdjacentHTML('beforeend', `<option value="${item.id}">${escapeHTMLGasto(item.nome)}</option>`);
+            }
+            select.value = item.id;
+        }
+    }
+    return retorno;
+};
+
+// --- Lançar Vários Gastos: várias linhas, itens diferentes, em um único salvamento ---
+// Local, Nota Fiscal e Data ficam ÚNICOS no topo do formulário (a compra é a mesma para todos os itens).
+window.criarLinhaGastoLoteHTML = function() {
+    const itens = [...allGastosItens].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
+    let optionsItens = `<option value="">Selecione o item...</option><option value="${window.SENTINELA_ADICIONAR_GASTO}">+ Adicionar item</option>`;
+    itens.forEach(i => { optionsItens += `<option value="${i.id}">${escapeHTMLGasto(i.nome)}</option>`; });
+
+    return `<tr class="gasto-lote-row">
+        <td data-label="Item:">
+            <div class="gasto-campo-com-novo">
+                <div class="gasto-item-select-wrap">
+                    <select class="gasto-lote-item" onchange="window.tratarSelecaoItemGasto(this)">${optionsItens}</select>
+                    <button type="button" class="gasto-item-delete-btn" onclick="window.excluirItemSelecionadoGasto(this)" title="Excluir item selecionado"><i class="fas fa-trash"></i></button>
+                </div>
+                <input type="text" class="gasto-item-novo-input" placeholder="Nome do novo item" style="display:none;" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" onblur="window.confirmarNovoItemGastoInline(this)">
+            </div>
+        </td>
+        <td data-label="Marca:">
+            <div class="gasto-campo-com-novo">
+                <div class="gasto-marca-select-wrap">
+                    <select class="gasto-lote-marca-select" onchange="window.tratarSelecaoMarcaGasto(this)">${window.renderOptionsMarcaGasto('')}</select>
+                    <button type="button" class="gasto-marca-delete-btn" onclick="window.excluirMarcaSelecionadaGasto(this)" title="Excluir marca selecionada"><i class="fas fa-trash"></i></button>
+                </div>
+                <input type="text" class="gasto-marca-novo-input" placeholder="Nome da nova marca" style="display:none;" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}" onblur="window.confirmarNovaMarcaGastoInline(this)">
+            </div>
+        </td>
+        <td data-label="Medida:"><input class="gasto-lote-peso" type="text" placeholder="Medida"></td>
+        <td data-label="Quantidade:"><input class="gasto-lote-qtd" type="number" min="0" step="0.001" value="1" oninput="window.atualizarTotalGastoLote(this)"></td>
+        <td data-label="Unidade:"><input class="gasto-lote-unit" type="number" min="0" step="0.01" placeholder="0,00" oninput="window.atualizarTotalGastoLote(this)"></td>
+        <td data-label="Total:"><input class="gasto-lote-total" type="number" min="0" step="0.01" value="0.00" readonly></td>
+        <td data-label="Comprador:"><select class="gasto-lote-comprador"><option value="Caixa" selected>Caixa</option><option value="Arabela">Arabela</option><option value="Flávio">Flávio</option></select></td>
+        <td data-label="Observação:">
+            <input class="gasto-lote-obs" type="text" placeholder="Observação">
+        </td>
+        <td class="gastos-acoes-cell" data-label="Ações:">
+            <button class="gastos-icon-btn danger" type="button" onclick="window.removerLinhaGastoLote(this)" title="Remover linha"><i class="fas fa-trash"></i></button>
+        </td>
+    </tr>`;
+};
+
+// Gera as <option> "À vista" + 2x a 50x, pro select único "Parcelamento" do lote.
+window.gerarOptionsParcelamento = function(selecionado) {
+    const num = Number(selecionado) || 1;
+    let html = `<option value="1" ${num === 1 ? 'selected' : ''}>À vista</option>`;
+    html += window.gerarOptionsParcelas(num);
+    return html;
+};
+
+// Gera as <option> de 2x a 50x, reaproveitadas no select "Parcelamento" do lote e no da edição.
+window.gerarOptionsParcelas = function(selecionado) {
+    let html = '';
+    for (let i = 2; i <= 50; i++) {
+        html += `<option value="${i}" ${Number(selecionado) === i ? 'selected' : ''}>${i}x</option>`;
+    }
+    return html;
+};
+
+// "Parcelamento" agora é um único select do lote inteiro (igual Local/Nota Fiscal/Data da
+// compra) - não mais checkbox+campo por linha/item. Todas as linhas preenchidas do lote
+// usam a mesma opção de parcelamento (À vista = sem parcelar, ou 2x a 50x).
+
+window.atualizarTotalGastoLote = function(elemento) {
+    const row = elemento.closest('.gasto-lote-row');
+    if (!row) return;
+    const qtd = Number(row.querySelector('.gasto-lote-qtd')?.value || 0);
+    const unit = Number(row.querySelector('.gasto-lote-unit')?.value || 0);
+    const total = row.querySelector('.gasto-lote-total');
+    if (total) total.value = (qtd * unit).toFixed(2);
+    window.atualizarTotalGeralGastoLote();
+};
+
+// NOVO (2026-10): soma do lançamento inteiro, para conferir com a nota fiscal.
+window.atualizarTotalGeralGastoLote = function() {
+    const tbody = document.getElementById('gastos-lote-rows');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('.gasto-lote-row'));
+    const total = rows.reduce((acc, row) => {
+        const qtd = Number(row.querySelector('.gasto-lote-qtd')?.value || 0);
+        const unit = Number(row.querySelector('.gasto-lote-unit')?.value || 0);
+        return acc + qtd * unit;
+    }, 0);
+    const valorEl = document.getElementById('gasto-lote-total-valor');
+    if (valorEl) valorEl.textContent = formatarMoedaGasto(total);
+    const linhasEl = document.getElementById('gasto-lote-total-linhas');
+    if (linhasEl) linhasEl.textContent = `(${rows.length} ${rows.length === 1 ? 'item' : 'itens'})`;
+    const qtdInput = document.getElementById('gasto-lote-qtd-linhas');
+    if (qtdInput && document.activeElement !== qtdInput) qtdInput.value = rows.length;
+};
+
+function linhaGastoLoteVazia(row) {
+    const item = row.querySelector('.gasto-lote-item')?.value || '';
+    const marca = row.querySelector('.gasto-lote-marca-select')?.value || '';
+    const unit = Number(row.querySelector('.gasto-lote-unit')?.value || 0);
+    const peso = row.querySelector('.gasto-lote-peso')?.value || '';
+    return !item && !marca && !unit && !peso;
+}
+
+// NOVO (2026-10): campo "Itens" — digita 5 e abre 5 linhas.
+window.definirQtdLinhasGastoLote = function(valor) {
+    const tbody = document.getElementById('gastos-lote-rows');
+    if (!tbody) return;
+    const alvo = Math.min(100, Math.max(1, parseInt(valor) || 1));
+    let rows = Array.from(tbody.querySelectorAll('.gasto-lote-row'));
+    while (rows.length < alvo) {
+        tbody.insertAdjacentHTML('beforeend', window.criarLinhaGastoLoteHTML());
+        rows = Array.from(tbody.querySelectorAll('.gasto-lote-row'));
+    }
+    // Ao diminuir, só remove linhas vazias do fim (nunca apaga o que já foi preenchido).
+    for (let i = rows.length - 1; i >= 0 && rows.length > alvo; i--) {
+        if (linhaGastoLoteVazia(rows[i])) { rows[i].remove(); rows.splice(i, 1); }
+    }
+    if (rows.length > alvo) window.showToast('Algumas linhas já preenchidas foram mantidas.', true);
+    tbody.querySelectorAll('.gasto-lote-item').forEach(sel => window.atualizarBotaoExcluirItemGastoSelect(sel));
+    tbody.querySelectorAll('.gasto-lote-marca-select').forEach(sel => window.atualizarBotaoExcluirMarcaGasto?.(sel));
+    const qtdInput = document.getElementById('gasto-lote-qtd-linhas');
+    if (qtdInput) qtdInput.value = rows.length;
+    window.atualizarTotalGeralGastoLote();
+};
+
+window.adicionarLinhaGastoLote = function() {
+    const tbody = document.getElementById('gastos-lote-rows');
+    if (!tbody) return;
+    tbody.insertAdjacentHTML('beforeend', window.criarLinhaGastoLoteHTML());
+    const novaLinha = tbody.lastElementChild;
+    novaLinha?.querySelectorAll('.gasto-lote-item').forEach(sel => window.atualizarBotaoExcluirItemGastoSelect(sel));
+    novaLinha?.querySelectorAll('.gasto-lote-marca-select').forEach(sel => window.atualizarBotaoExcluirMarcaGasto?.(sel));
+    window.atualizarTotalGeralGastoLote();
+};
+
+window.removerLinhaGastoLote = function(botao) {
+    const tbody = document.getElementById('gastos-lote-rows');
+    const row = botao.closest('.gasto-lote-row');
+    if (!tbody || !row) return;
+    if (tbody.querySelectorAll('.gasto-lote-row').length <= 1) {
+        row.remove();
+        tbody.insertAdjacentHTML('beforeend', window.criarLinhaGastoLoteHTML());
+        window.atualizarTotalGeralGastoLote();
+        return;
+    }
+    row.remove();
+    window.atualizarTotalGeralGastoLote();
+};
+
+window.abrirModalGastosLote = function() {
+    const tbody = document.getElementById('gastos-lote-rows');
+    if (!tbody) return;
+    if (!allGastosItens.length) {
+        return window.showToast('Cadastre ao menos um item antes de lançar gastos em lote.', true);
+    }
+
+    const localSelect = document.getElementById('gasto-lote-local-unico');
+    if (localSelect) localSelect.innerHTML = window.renderOptionsLocalGasto('');
+    const localNovoInput = document.getElementById('gasto-lote-local-novo-input');
+    if (localNovoInput) localNovoInput.style.display = 'none';
+    window.atualizarBotaoExcluirLocalGasto?.(localSelect);
+    const notaInput = document.getElementById('gasto-lote-nota-unica');
+    if (notaInput) notaInput.value = '';
+    const dataInput = document.getElementById('gasto-lote-data-unica');
+    if (dataInput) dataInput.value = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+
+    const parcelasSelect = document.getElementById('gasto-lote-parcelas-unico');
+    if (parcelasSelect) parcelasSelect.innerHTML = window.gerarOptionsParcelamento(1);
+
+    tbody.innerHTML = window.criarLinhaGastoLoteHTML();
+    tbody.querySelectorAll('.gasto-lote-item').forEach(sel => window.atualizarBotaoExcluirItemGastoSelect(sel));
+    tbody.querySelectorAll('.gasto-lote-marca-select').forEach(sel => window.atualizarBotaoExcluirMarcaGasto?.(sel));
+    const qtdLinhasInput = document.getElementById('gasto-lote-qtd-linhas');
+    if (qtdLinhasInput) qtdLinhasInput.value = 1;
+    window.atualizarTotalGeralGastoLote();
+    window.openModal('modal-gastos-lote');
+};
+
+// Gera um lançamento por parcela: mesmo item/marca/local, valor total e valor unidade
+// divididos igualmente, data avançando um mês por parcela, e observação com "N/total".
+window.gerarPayloadsParcelasGasto = function(base, parcelas) {
+    const grupoId = 'parc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    const valorUnidadePorParcela = (Number(base.valorUnidade) || 0) / parcelas;
+    const valorTotalPorParcela = (Number(base.valorTotal) || 0) / parcelas;
+    const dataBase = parseDataISO(base.dataCompra) || new Date();
+    const payloads = [];
+
+    for (let i = 1; i <= parcelas; i++) {
+        const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + (i - 1), dataBase.getDate());
+        const dataCompraParcela = `${dataParcela.getFullYear()}-${String(dataParcela.getMonth() + 1).padStart(2, '0')}-${String(dataParcela.getDate()).padStart(2, '0')}`;
+        const marcador = `${i}/${parcelas}`;
+        const observacaoParcela = base.observacao ? `${base.observacao} (${marcador})` : marcador;
+
+        payloads.push({
+            ...base,
+            valorUnidade: valorUnidadePorParcela,
+            valorTotal: valorTotalPorParcela,
+            dataCompra: dataCompraParcela,
+            ano: dataParcela.getFullYear(),
+            mes: dataParcela.getMonth() + 1,
+            observacao: observacaoParcela,
+            parcelaGrupoId: grupoId,
+            parcelaAtual: i,
+            parcelaTotal: parcelas,
+            parcelaValorTotalOriginal: Number(base.valorTotal) || 0,
+            parcelaValorUnidadeOriginal: Number(base.valorUnidade) || 0
+        });
+    }
+
+    return payloads;
+};
+
+window.salvarGastosLote = async function() {
+    const tbody = document.getElementById('gastos-lote-rows');
+    if (!tbody) return;
+
+    const localSelectUnico = document.getElementById('gasto-lote-local-unico');
+    const localCompra = localSelectUnico && localSelectUnico.value !== window.SENTINELA_ADICIONAR_GASTO ? String(localSelectUnico.value || '').trim() : '';
+    const notaFiscalUrl = String(document.getElementById('gasto-lote-nota-unica')?.value || '').trim();
+    const dataCompra = document.getElementById('gasto-lote-data-unica')?.value || '';
+    const parcelas = Math.max(1, parseInt(document.getElementById('gasto-lote-parcelas-unico')?.value || 1) || 1);
+
+    if (!dataCompra) return window.showToast('Preencha a Data da compra (topo do formulário).', true);
+
+    const rows = Array.from(tbody.querySelectorAll('.gasto-lote-row'));
+    let salvou = 0;
+    let comErro = false;
+
+    if (localCompra) {
+        try { await window.garantirLocalGasto(localCompra); } catch (e) { console.error(e); }
+    }
+
+    const dataObj = parseDataISO(dataCompra);
+    const anoLote = dataObj ? dataObj.getFullYear() : new Date().getFullYear();
+    const mesLote = dataObj ? dataObj.getMonth() + 1 : (new Date().getMonth() + 1);
+
+    for (const row of rows) {
+        const itemId = row.querySelector('.gasto-lote-item')?.value || '';
+        const marca = String(row.querySelector('.gasto-lote-marca-select')?.value || '').trim();
+        const peso = row.querySelector('.gasto-lote-peso')?.value.trim() || '';
+        const quantidade = Number(row.querySelector('.gasto-lote-qtd')?.value || 0);
+        const valorUnidade = Number(row.querySelector('.gasto-lote-unit')?.value || 0);
+        const valorTotal = quantidade * valorUnidade;
+        const comprador = row.querySelector('.gasto-lote-comprador')?.value || 'Caixa';
+        const observacao = String(row.querySelector('.gasto-lote-obs')?.value || '').trim();
+
+        const linhaVazia = !itemId && !marca && !peso && !quantidade && !valorUnidade;
+        if (linhaVazia) continue;
+
+        const item = getItemGasto(itemId);
+        if (!item) { window.showToast('Selecione o item em todas as linhas preenchidas.', true); comErro = true; continue; }
+        if (!marca || marca === window.SENTINELA_ADICIONAR_GASTO) { window.showToast(`Preencha a marca do item "${item.nome}".`, true); comErro = true; continue; }
+        if (!quantidade || !valorUnidade) { window.showToast(`Preencha quantidade e valor unidade do item "${item.nome}".`, true); comErro = true; continue; }
+
+        try {
+            await window.garantirMarcaGasto(marca);
+
+            const base = {
+                itemId,
+                itemNome: item.nome,
+                nome: marca,
+                marca,
+                localCompra,
+                peso,
+                quantidade,
+                valorUnidade,
+                valorTotal,
+                comprador,
+                dataCompra,
+                notaFiscalUrl,
+                observacao,
+                ano: anoLote,
+                mes: mesLote,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+
+            const payloads = parcelas > 1 ? window.gerarPayloadsParcelasGasto(base, parcelas) : [base];
+            for (const payload of payloads) {
+                await addDoc(collection(db, 'gastos_lancamentos'), payload);
+            }
+            salvou++;
+        } catch (e) {
+            console.error(e);
+            window.showToast(`Erro ao salvar o item "${item.nome}".`, true);
+            comErro = true;
+        }
+    }
+
+    if (salvou) {
+        window.showToast(`${salvou} lançamento(s) salvo(s)!`);
+        window.atualizarSelectsMarcaGasto?.();
+        window.renderGastosPlanilha();
+    } else if (!comErro) {
+        window.showToast('Nenhuma linha preenchida para salvar.', true);
+    }
+
+    if (salvou && !comErro) {
+        window.closeModal('modal-gastos-lote');
+    }
+};
+
+// ==========================================
+// NOVO (2026-08): sub-abas "Gastos" (resumo) e "Lançamentos" (lista detalhada)
+// Substitui o antigo comportamento de clicar no mês para abrir uma gaveta inline.
+// ==========================================
+window.gastosSubAbaAtiva = window.gastosSubAbaAtiva || 'gastos';
+
+window.trocarSubAbaGastos = function(aba) {
+    window.gastosSubAbaAtiva = aba;
+
+    document.querySelectorAll('.gastos-subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.subaba === aba));
+
+    const painelResumo = document.getElementById('gastos-painel-resumo');
+    const painelLanc = document.getElementById('gastos-painel-lancamentos');
+    if (painelResumo) painelResumo.style.display = aba === 'gastos' ? '' : 'none';
+    if (painelLanc) painelLanc.style.display = aba === 'lancamentos' ? '' : 'none';
+
+    const titulo = document.getElementById('gastos-titulo-painel');
+    if (titulo) titulo.textContent = aba === 'gastos' ? 'Planilha de Gastos' : 'Lançamentos do Período';
+
+    // Planilha de Gastos: só o filtro de Ano. Lançamentos: Item + Período + Limpar/Exportar.
+    const anoWrap = document.getElementById('gastos-filtro-ano-wrap');
+    const mesWrap = document.getElementById('gastos-filtro-mes-wrap');
+    const itemWrap = document.getElementById('gastos-filtro-item-wrap');
+    const periodoWrap = document.getElementById('gastos-filtro-periodo-wrap');
+    const acoesWrap = document.getElementById('gastos-filtros-acoes');
+    if (anoWrap) anoWrap.style.display = aba === 'gastos' ? '' : 'none';
+    // NOVO: filtro de Mês só faz sentido na Tabela (Planilha) - no celular, é ele que decide
+    // qual dos 12 meses aparece nos cartões. No Desktop ele fica sempre escondido por CSS
+    // (@media min-width:901px), então essa linha só tem efeito visível no celular.
+    if (mesWrap) mesWrap.style.display = aba === 'gastos' ? '' : 'none';
+    if (itemWrap) itemWrap.style.display = aba === 'lancamentos' ? '' : 'none';
+    if (periodoWrap) periodoWrap.style.display = aba === 'lancamentos' ? '' : 'none';
+    if (acoesWrap) acoesWrap.style.display = aba === 'lancamentos' ? '' : 'none';
+
+    if (aba === 'lancamentos') window.renderGastosLancamentosLista();
+    else window.renderGastosPlanilha();
+};
+
+// Chamado ao clicar em uma célula de mês na tabela-resumo: filtra e leva para "Lançamentos"
+// (substitui a antiga window.abrirGastosItem, que ficava expandindo uma gaveta na própria linha).
+window.abrirLancamentosDoMes = function(itemId, mes) {
+    const selItem = document.getElementById('gastos-filtro-item');
+    if (selItem) selItem.value = itemId;
+    const ano = getAnoGastosSelecionado();
+    window.gastosDataInicial = new Date(ano, mes - 1, 1, 0,0,0,0);
+    window.gastosDataFinal = new Date(ano, mes, 0, 0,0,0,0);
+    window.atualizarDisplayDataGastos?.();
+    window.trocarSubAbaGastos('lancamentos');
+};
+
+// NOVO (2026-08): quando o "Local" tem um apelido/sigla entre parênteses no final
+// (ex.: "Distribuidora e Panificadora (Displan)"), mostra o nome principal e o texto
+// entre parênteses como uma tag menor abaixo - só formatação visual, não muda o dado salvo.
+window.formatarLocalComTagGasto = function(localCompra) {
+    const texto = String(localCompra || '').trim();
+    if (!texto) return '-';
+    const m = texto.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    if (!m || !m[1].trim()) return escapeHTMLGasto(texto);
+    const principal = m[1].trim();
+    const tag = m[2].trim();
+    return `<span class="gasto-local-principal">${escapeHTMLGasto(principal)}</span><span class="gasto-local-tag">${escapeHTMLGasto(tag)}</span>`;
+};
+
+// Mesma ideia, mas em HTML simples com estilo inline (pro export Word via html-docx-js,
+// que não interpreta de forma confiável classes de um <style> externo).
+window.formatarLocalComTagGastoWord = function(localCompra) {
+    const texto = String(localCompra || '').trim();
+    if (!texto) return '';
+    const m = texto.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    if (!m || !m[1].trim()) return texto;
+    const principal = m[1].trim();
+    const tag = m[2].trim();
+    return `${principal}<br><span style="display:inline-block; margin-top:2px; padding:1px 8px; background:#F4E6CB; color:#46493A; border-radius:8px; font-size:7pt; white-space:nowrap;">${tag}</span>`;
+};
+
+window.renderGastosLancamentosLista = function() {
+    const tbody = document.getElementById('gastos-lancamentos-lista-body');
+    if (!tbody) return;
+
+    const filtroItem = document.getElementById('gastos-filtro-item')?.value || '';
+
+    let lista = allGastosLancamentos.slice();
+    if (window.gastosDataInicial && window.gastosDataFinal) {
+        const ini = window.gastosDataInicial.getTime();
+        const fim = window.gastosDataFinal.getTime();
+        lista = lista.filter(l => {
+            const d = parseDataGasto(l?.dataCompra || l?.Data_Compra || '');
+            if (!d) return false;
+            const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+            return t >= ini && t <= fim;
+        });
+    }
+    if (filtroItem) lista = lista.filter(l => l.itemId === filtroItem);
+
+    lista.sort((a, b) => {
+        const porNome = String(a.itemNome || '').localeCompare(String(b.itemNome || ''), 'pt-BR', { sensitivity: 'base' });
+        if (porNome !== 0) return porNome;
+        return String(a.dataCompra || '').localeCompare(String(b.dataCompra || ''));
+    });
+
+    if (!lista.length) {
+        tbody.innerHTML = `<tr><td colspan="12" class="gastos-empty"><i class="fas fa-box-open" style="font-size:3rem; margin-bottom:15px; display:block; color:#ddd;"></i>Nenhum lançamento neste período.</td></tr>`;
+        return;
+    }
+
+    let totalGeral = 0;
+    let html = '';
+
+    lista.forEach(l => {
+        const total = Number(l.valorTotal) || 0;
+        totalGeral += total;
+        const notaHtml = l.notaFiscalUrl
+            ? `<a href="${/^https?:\/\//i.test(l.notaFiscalUrl) ? escapeHTMLGasto(l.notaFiscalUrl) : 'https://' + escapeHTMLGasto(l.notaFiscalUrl)}" target="_blank" rel="noopener" class="gastos-icon-btn copy" title="Abrir nota fiscal" onclick="event.stopPropagation();"><i class="fas fa-file-invoice"></i></a>`
+            : `<span style="color:#bbb;">—</span>`;
+
+        html += `<tr data-lanc-id="${l.id}">
+            <td data-label="Item:">${escapeHTMLGasto(l.itemNome || '')}</td>
+            <td data-label="Marca:">${escapeHTMLGasto(l.marca || l.nome || '')}</td>
+            <td data-label="Local:">${window.formatarLocalComTagGasto(l.localCompra)}</td>
+            <td data-label="Medida:">${escapeHTMLGasto(l.peso || '-')}</td>
+            <td data-label="Quantidade:">${(Number(l.quantidade) || 0).toLocaleString('pt-BR')}</td>
+            <td data-label="Unidade:">${formatarMoedaGasto(l.valorUnidade)}</td>
+            <td data-label="Total:"><strong>${formatarMoedaGasto(total)}</strong></td>
+            <td data-label="Comprador:">${escapeHTMLGasto(l.comprador || '-')}</td>
+            <td data-label="Data:">${window.formatarDataCurtaGasto(l.dataCompra)}</td>
+            <td data-label="Nota Fiscal:">${notaHtml}</td>
+            <td data-label="Observação:">${escapeHTMLGasto(l.observacao || '-')}</td>
+            <td data-label="Ações:">
+                <div class="action-btns-wrapper">
+                    <button class="btn-action edit" title="Editar lançamento" onclick="window.abrirEdicaoLancamentoGasto('${l.id}')"><i class="fas fa-pencil-alt"></i></button>
+                    <button class="btn-action copy" title="Copiar lançamento" onclick="window.copiarLancamentoGasto('${l.id}')"><i class="fas fa-copy"></i></button>
+                    <button class="btn-action del" title="Excluir lançamento" onclick="window.excluirLancamentoGasto('${l.id}')"><i class="fas fa-trash"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    });
+
+    // NOVO (2026-08): total do período volta a ser a última linha da tabela, mas fixa
+    // (sticky) no fim da área visível - os itens rolam entre ela e o cabeçalho (thead,
+    // que já é sticky no topo). Classe própria (não .gastos-total-row, usada na Planilha).
+    html += `<tr class="gastos-lancamentos-total-row">
+        <td colspan="11">TOTAL DO PERÍODO</td>
+        <td><strong>${formatarMoedaGasto(totalGeral)}</strong></td>
+    </tr>`;
+
+    tbody.innerHTML = html;
+};
+
+window.montarOptionsItensGasto = function(selecionado = '') {
+    const itens = [...allGastosItens].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
+    let html = `<option value="${window.SENTINELA_ADICIONAR_GASTO}">+ Adicionar item</option>`;
+    itens.forEach(i => { html += `<option value="${i.id}" ${i.id === selecionado ? 'selected' : ''}>${escapeHTMLGasto(i.nome)}</option>`; });
+    return html;
+};
+
+window.abrirEdicaoLancamentoGasto = function(lancId) {
+    const l = allGastosLancamentos.find(x => x.id === lancId);
+    if (!l) return;
+
+    document.getElementById('edit-lanc-id').value = l.id;
+    const selItem = document.getElementById('edit-lanc-item');
+    const selMarca = document.getElementById('edit-lanc-marca');
+    const selLocal = document.getElementById('edit-lanc-local');
+    selItem.innerHTML = window.montarOptionsItensGasto(l.itemId);
+    selMarca.innerHTML = window.renderOptionsMarcaGasto(l.marca || l.nome || '');
+    selLocal.innerHTML = window.renderOptionsLocalGasto(l.localCompra || '');
+    document.getElementById('edit-lanc-peso').value = l.peso || '';
+    document.getElementById('edit-lanc-qtd').value = l.quantidade || 1;
+    document.getElementById('edit-lanc-unit').value = l.valorUnidade || 0;
+    document.getElementById('edit-lanc-comprador').value = l.comprador || 'Caixa';
+    document.getElementById('edit-lanc-data').value = l.dataCompra || '';
+    document.getElementById('edit-lanc-nota').value = l.notaFiscalUrl || '';
+    document.getElementById('edit-lanc-obs').value = l.observacao || '';
+
+    const parcelaHint = document.getElementById('edit-lanc-parcela-hint');
+    const parcelasWrap = document.getElementById('edit-lanc-parcelas-wrap');
+    const parcelasSelect = document.getElementById('edit-lanc-parcelas');
+    const ehParcelado = !!(l.parcelaGrupoId && l.parcelaTotal > 1);
+    if (parcelasWrap) parcelasWrap.style.display = ehParcelado ? '' : 'none';
+    if (parcelasSelect) parcelasSelect.innerHTML = window.gerarOptionsParcelas(ehParcelado ? l.parcelaTotal : 2);
+    if (parcelaHint) parcelaHint.textContent = ehParcelado ? `(atualmente parcela ${l.parcelaAtual || 1}/${l.parcelaTotal})` : '';
+
+    const novoItemInput = document.getElementById('edit-lanc-item-novo-input');
+    if (novoItemInput) novoItemInput.style.display = 'none';
+    const novaMarcaInput = document.getElementById('edit-lanc-marca-novo-input');
+    if (novaMarcaInput) novaMarcaInput.style.display = 'none';
+    const novoLocalInput = document.getElementById('edit-lanc-local-novo-input');
+    if (novoLocalInput) novoLocalInput.style.display = 'none';
+    window.atualizarBotaoExcluirItemGastoSelect(selItem);
+    window.atualizarBotaoExcluirMarcaGasto?.(selMarca);
+    window.atualizarBotaoExcluirLocalGasto?.(selLocal);
+
+    window.openModal('modal-editar-gasto-lancamento');
+};
+
+window.__edicaoParcelaPendente = null;
+
+window.salvarEdicaoLancamentoGasto = async function(event) {
+    event.preventDefault();
+    const lancId = document.getElementById('edit-lanc-id').value;
+    const l = allGastosLancamentos.find(x => x.id === lancId);
+    if (!l) return;
+
+    const itemId = document.getElementById('edit-lanc-item').value;
+    const item = getItemGasto(itemId);
+    if (!item) return window.showToast('Selecione um item válido.', true);
+
+    const marca = String(document.getElementById('edit-lanc-marca').value || '').trim();
+    const localCompra = String(document.getElementById('edit-lanc-local').value || '').trim();
+    const peso = document.getElementById('edit-lanc-peso').value.trim();
+    const quantidade = Number(document.getElementById('edit-lanc-qtd').value || 0);
+    const valorUnidade = Number(document.getElementById('edit-lanc-unit').value || 0);
+    const valorTotal = quantidade * valorUnidade;
+    const comprador = document.getElementById('edit-lanc-comprador').value || 'Caixa';
+    const dataCompra = document.getElementById('edit-lanc-data').value;
+    const notaFiscalUrl = document.getElementById('edit-lanc-nota').value.trim();
+    const observacao = document.getElementById('edit-lanc-obs').value.trim();
+
+    if (!marca || marca === window.SENTINELA_ADICIONAR_GASTO) return window.showToast('Selecione ou cadastre uma marca.', true);
+    if (!quantidade || !valorUnidade) return window.showToast('Preencha quantidade e valor unidade.', true);
+    if (!dataCompra) return window.showToast('Preencha a data.', true);
+
+    const dados = { lancId, l, itemId, item, marca, localCompra, peso, quantidade, valorUnidade, valorTotal, comprador, dataCompra, notaFiscalUrl, observacao };
+
+    const ehParcelado = !!(l.parcelaGrupoId && l.parcelaTotal > 1);
+    const novoTotalParcelas = ehParcelado ? Number(document.getElementById('edit-lanc-parcelas')?.value || l.parcelaTotal) : 0;
+    const parcelasMudou = ehParcelado && novoTotalParcelas !== Number(l.parcelaTotal);
+
+    if (parcelasMudou) {
+        return await window.alterarQuantidadeParcelasGasto(dados, novoTotalParcelas);
+    }
+
+    const valorMudou = Math.abs(valorTotal - (Number(l.valorTotal) || 0)) > 0.004;
+    if (ehParcelado && valorMudou) {
+        window.__edicaoParcelaPendente = dados;
+        window.openModal('modal-escolha-parcela');
+        return;
+    }
+
+    await window.salvarEdicaoLancamentoGastoDefinitivo(dados);
+};
+
+window.confirmarEdicaoParcela = async function(modo) {
+    const dados = window.__edicaoParcelaPendente;
+    window.__edicaoParcelaPendente = null;
+    window.closeModal('modal-escolha-parcela');
+    if (!dados) return;
+
+    if (modo === 'total') await window.redistribuirParcelasGasto(dados);
+    else await window.salvarEdicaoLancamentoGastoDefinitivo(dados);
+};
+
+window.salvarEdicaoLancamentoGastoDefinitivo = async function(dados) {
+    const { lancId, l, itemId, item, marca, localCompra, peso, quantidade, valorUnidade, valorTotal, comprador, dataCompra, notaFiscalUrl, observacao } = dados;
+    try {
+        await window.garantirMarcaGasto(marca);
+        if (localCompra) await window.garantirLocalGasto(localCompra);
+        const dataObj = parseDataISO(dataCompra);
+
+        await updateDoc(doc(db, 'gastos_lancamentos', lancId), {
+            itemId,
+            itemNome: item.nome,
+            nome: marca,
+            marca,
+            localCompra,
+            peso,
+            quantidade,
+            valorUnidade,
+            valorTotal,
+            comprador,
+            dataCompra,
+            notaFiscalUrl,
+            observacao,
+            ano: dataObj ? dataObj.getFullYear() : l.ano,
+            mes: dataObj ? dataObj.getMonth() + 1 : l.mes,
+            updatedAt: Date.now()
+        });
+
+        window.showToast('Lançamento atualizado!');
+        window.atualizarSelectsMarcaGasto?.();
+        window.closeModal('modal-editar-gasto-lancamento');
+        window.renderGastosPlanilha();
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao atualizar lançamento.', true);
+    }
+};
+
+// Trata o valor editado como o novo TOTAL da compra parcelada: recalcula e regrava
+// o valor de cada parcela do mesmo grupo (mantém a data/mês de cada parcela intacta).
+window.redistribuirParcelasGasto = async function(dados) {
+    const { l, itemId, item, marca, localCompra, peso, quantidade, valorUnidade, valorTotal, comprador, notaFiscalUrl, observacao } = dados;
+    const grupoId = l.parcelaGrupoId;
+    if (!grupoId) return window.salvarEdicaoLancamentoGastoDefinitivo(dados);
+
+    const membros = allGastosLancamentos.filter(x => x.parcelaGrupoId === grupoId).sort((a, b) => (a.parcelaAtual || 0) - (b.parcelaAtual || 0));
+    const totalParcelas = l.parcelaTotal || membros.length || 1;
+    const novoValorUnidadePorParcela = (Number(valorUnidade) || 0) / totalParcelas;
+    const novoValorTotalPorParcela = (Number(valorTotal) || 0) / totalParcelas;
+
+    try {
+        await window.garantirMarcaGasto(marca);
+        if (localCompra) await window.garantirLocalGasto(localCompra);
+
+        await Promise.all(membros.map(m => {
+            const marcador = `${m.parcelaAtual || 1}/${totalParcelas}`;
+            const obsFinal = observacao ? `${observacao} (${marcador})` : marcador;
+            return updateDoc(doc(db, 'gastos_lancamentos', m.id), {
+                itemId,
+                itemNome: item.nome,
+                nome: marca,
+                marca,
+                localCompra,
+                peso,
+                quantidade,
+                valorUnidade: novoValorUnidadePorParcela,
+                valorTotal: novoValorTotalPorParcela,
+                comprador,
+                notaFiscalUrl,
+                observacao: obsFinal,
+                parcelaValorTotalOriginal: Number(valorTotal) || 0,
+                parcelaValorUnidadeOriginal: Number(valorUnidade) || 0,
+                updatedAt: Date.now()
+            });
+        }));
+
+        window.showToast(`Valor total redistribuído entre as ${totalParcelas} parcelas!`);
+        window.atualizarSelectsMarcaGasto?.();
+        window.closeModal('modal-editar-gasto-lancamento');
+        window.renderGastosPlanilha();
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao redistribuir parcelas.', true);
+    }
+};
+
+// Altera a QUANTIDADE de parcelas de um lançamento já parcelado: revalida/redistribui o
+// valor total (editado) entre o novo número de parcelas — cria lançamentos novos se o
+// número aumentou, ou remove os excedentes (as últimas parcelas) se diminuiu. As parcelas
+// mantidas preservam sua própria data/mês; as novas continuam a cadência mensal a partir
+// da data da parcela 1.
+window.alterarQuantidadeParcelasGasto = async function(dados, novoTotalParcelas) {
+    const { l, itemId, item, marca, localCompra, peso, quantidade, valorUnidade, valorTotal, comprador, notaFiscalUrl, observacao } = dados;
+    const grupoId = l.parcelaGrupoId;
+    if (!grupoId) return window.salvarEdicaoLancamentoGastoDefinitivo(dados);
+
+    const membrosAtuais = allGastosLancamentos.filter(x => x.parcelaGrupoId === grupoId).sort((a, b) => (a.parcelaAtual || 0) - (b.parcelaAtual || 0));
+    const totalAtual = membrosAtuais.length;
+    const novoValorUnidadePorParcela = (Number(valorUnidade) || 0) / novoTotalParcelas;
+    const novoValorTotalPorParcela = (Number(valorTotal) || 0) / novoTotalParcelas;
+    const primeiraParcela = membrosAtuais.find(m => Number(m.parcelaAtual) === 1) || membrosAtuais[0];
+    const dataBase = parseDataISO(primeiraParcela?.dataCompra) || new Date();
+
+    try {
+        await window.garantirMarcaGasto(marca);
+        if (localCompra) await window.garantirLocalGasto(localCompra);
+
+        const manter = membrosAtuais.slice(0, novoTotalParcelas);
+        const remover = membrosAtuais.slice(novoTotalParcelas);
+
+        await Promise.all(manter.map(m => {
+            const marcador = `${m.parcelaAtual || 1}/${novoTotalParcelas}`;
+            const obsFinal = observacao ? `${observacao} (${marcador})` : marcador;
+            return updateDoc(doc(db, 'gastos_lancamentos', m.id), {
+                itemId, itemNome: item.nome, nome: marca, marca, localCompra, peso, quantidade,
+                valorUnidade: novoValorUnidadePorParcela,
+                valorTotal: novoValorTotalPorParcela,
+                comprador, notaFiscalUrl, observacao: obsFinal,
+                parcelaTotal: novoTotalParcelas,
+                parcelaValorTotalOriginal: Number(valorTotal) || 0,
+                parcelaValorUnidadeOriginal: Number(valorUnidade) || 0,
+                updatedAt: Date.now()
+            });
+        }));
+
+        if (remover.length) {
+            await Promise.all(remover.map(m => deleteDoc(doc(db, 'gastos_lancamentos', m.id))));
+        }
+
+        for (let i = totalAtual + 1; i <= novoTotalParcelas; i++) {
+            const dataParcela = new Date(dataBase.getFullYear(), dataBase.getMonth() + (i - 1), dataBase.getDate());
+            const dataCompraParcela = `${dataParcela.getFullYear()}-${String(dataParcela.getMonth() + 1).padStart(2, '0')}-${String(dataParcela.getDate()).padStart(2, '0')}`;
+            const marcador = `${i}/${novoTotalParcelas}`;
+            const obsFinal = observacao ? `${observacao} (${marcador})` : marcador;
+            await addDoc(collection(db, 'gastos_lancamentos'), {
+                itemId, itemNome: item.nome, nome: marca, marca, localCompra, peso, quantidade,
+                valorUnidade: novoValorUnidadePorParcela,
+                valorTotal: novoValorTotalPorParcela,
+                comprador, notaFiscalUrl, observacao: obsFinal,
+                dataCompra: dataCompraParcela,
+                ano: dataParcela.getFullYear(),
+                mes: dataParcela.getMonth() + 1,
+                parcelaGrupoId: grupoId,
+                parcelaAtual: i,
+                parcelaTotal: novoTotalParcelas,
+                parcelaValorTotalOriginal: Number(valorTotal) || 0,
+                parcelaValorUnidadeOriginal: Number(valorUnidade) || 0,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            });
+        }
+
+        window.showToast(`Parcelamento atualizado para ${novoTotalParcelas}x!`);
+        window.atualizarSelectsMarcaGasto?.();
+        window.closeModal('modal-editar-gasto-lancamento');
+        window.renderGastosPlanilha();
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao alterar a quantidade de parcelas.', true);
+    }
+};
+
+// Toda vez que a planilha-resumo é atualizada (qualquer alteração em itens/lançamentos/marcas),
+// mantém a lista de Lançamentos sincronizada também, se ela for a sub-aba ativa no momento.
+const renderGastosPlanilhaComSubAbasOriginal = window.renderGastosPlanilha;
+window.renderGastosPlanilha = function(...args) {
+    const retorno = renderGastosPlanilhaComSubAbasOriginal.apply(this, args);
+    if (window.gastosSubAbaAtiva === 'lancamentos') window.renderGastosLancamentosLista?.();
+    window.atualizarDisplayDataGastos?.();
+    // Mobile: marca no <table> qual mês está ativo no filtro, para o CSS mostrar só essa
+    // coluna de mês (junto com a coluna de Item, fixa) e esconder as outras 11.
+    const tabelaResumoGastos = document.querySelector('#gastos-painel-resumo table.gastos-rebuild-table');
+    if (tabelaResumoGastos) {
+        // NOVO: o mês mostrado no celular agora vem do filtro de Mês (#gastos-mes-filtro,
+        // visível no popup de Filtros da aba Tabela). Continua caindo no mês atual real
+        // por padrão, já que o select já nasce com esse valor selecionado.
+        const mesFiltroSelecionado = document.getElementById('gastos-mes-filtro')?.value;
+        tabelaResumoGastos.setAttribute('data-mes-ativo', String(mesFiltroSelecionado || new Date().getMonth() + 1));
+    }
+    return retorno;
+};
+
+// --- Filtro/exportação de mês ---
+(function initGastosMesFiltroSelect() {
+    const sel = document.getElementById('gastos-mes-filtro');
+    if (!sel) return;
+    const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    sel.innerHTML = nomes.map((n, i) => `<option value="${i + 1}">Mês: ${n}</option>`).join('');
+    sel.value = String(new Date().getMonth() + 1);
+})();
+
+window.prepararDadosExportacaoGastos = function() {
+    const itemFiltro = document.getElementById('gastos-filtro-item')?.value || '';
+    const ini = window.gastosDataInicial;
+    const fim = window.gastosDataFinal || ini;
+
+    const fmt = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const fmtArquivo = (d) => `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    const mesmaData = ini && fim && ini.getTime() === fim.getTime();
+    const periodoLabel = ini ? (mesmaData ? fmt(ini) : `${fmt(ini)} - ${fmt(fim)}`) : '';
+    const periodoArquivo = ini ? (mesmaData ? fmtArquivo(ini) : `${fmtArquivo(ini)}_a_${fmtArquivo(fim)}`) : 'periodo';
+
+    let itens = [...allGastosItens].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
+    if (itemFiltro) itens = itens.filter(i => i.id === itemFiltro);
+
+    const grupos = [];
+    let totalGeral = 0;
+
+    itens.forEach(item => {
+        let lista = allGastosLancamentos.filter(l => l.itemId === item.id);
+        if (ini && fim) {
+            const t0 = ini.getTime(), t1 = fim.getTime();
+            lista = lista.filter(l => {
+                const d = parseDataGasto(l?.dataCompra || l?.Data_Compra || '');
+                if (!d) return false;
+                const t = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+                return t >= t0 && t <= t1;
+            });
+        }
+        lista.sort((a, b) => String(a.dataCompra || '').localeCompare(String(b.dataCompra || '')));
+        if (!lista.length) return;
+        const totalItem = lista.reduce((acc, l) => acc + (Number(l.valorTotal) || 0), 0);
+        totalGeral += totalItem;
+        grupos.push({ item, lista, totalItem });
+    });
+
+    return { periodoLabel, periodoArquivo, grupos, totalGeral, temDados: grupos.length > 0 };
+};
+
+// Botão "Exportar Mês": abre um popup de escolha (WhatsApp Arabela/Flávio ou Word), em vez de baixar direto.
+window.abrirModalExportarGastos = function() {
+    const dados = window.prepararDadosExportacaoGastos();
+    if (!dados.temDados) return window.showToast(`Nenhum gasto lançado no período selecionado.`, true);
+
+    const periodoEl = document.getElementById('gastos-exportar-periodo');
+    if (periodoEl) periodoEl.textContent = dados.periodoLabel;
+
+    window.openModal('modal-exportar-gastos');
+};
+
+window.enviarGastosMesWA = function(destinatario) {
+    const dados = window.prepararDadosExportacaoGastos();
+    if (!dados.temDados) return window.showToast('Nada para exportar.', true);
+
+    const normalizar = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const numerosGastosWA = { arabela: '558199502865', ara: '558199502865', flavio: '558199591775', fla: '558199591775', flávio: '558199591775' };
+    const numero = numerosGastosWA[normalizar(destinatario)];
+    if (!numero) return window.showToast('Não foi possível identificar o número do destinatário.', true);
+
+    const moeda = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    let txt = `*FAVU - Gastos do Período*\n`;
+    txt += `*${dados.periodoLabel}*\n\n`;
+
+    dados.grupos.forEach(g => {
+        txt += `*${g.item.nome} | Valor Total: ${moeda(g.totalItem)}*\n`;
+        g.lista.forEach(l => {
+            const marca = l.marca || l.nome || '';
+            txt += `- Marca: ${marca}\n`;
+            txt += `- Local: ${l.localCompra || '-'}\n`;
+            txt += `- Medidas: ${l.peso || '-'}\n`;
+            txt += `- Quantidade: ${(Number(l.quantidade) || 0).toLocaleString('pt-BR')}\n`;
+            txt += `- Valor: ${moeda(l.valorTotal)}\n`;
+            txt += `- Data: ${window.formatarDataCurtaGasto(l.dataCompra)}\n`;
+            if (l.observacao) txt += `- Observação: ${l.observacao}\n`;
+            txt += `\n`;
+        });
+    });
+
+    txt += `*-------------------------------------*\n`;
+    txt += `*TOTAL GERAL: ${moeda(dados.totalGeral)}*`;
+
+    window.open(`https://api.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(txt)}`, '_blank');
+    window.closeModal('modal-exportar-gastos');
+};
+
+// Carrega sob demanda uma biblioteca leve de conversão HTML → Word (só quando o botão "Word" é usado).
+window.__htmlDocxJsPromise = null;
+window.carregarHtmlDocxJs = function() {
+    if (window.htmlDocx) return Promise.resolve();
+    if (window.__htmlDocxJsPromise) return window.__htmlDocxJsPromise;
+    window.__htmlDocxJsPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Falha ao carregar biblioteca de exportação Word.'));
+        document.head.appendChild(script);
+    });
+    return window.__htmlDocxJsPromise;
+};
+
+// Carrega o logo FAVU sob demanda e converte para base64, para embutir no .docx (arquivo autossuficiente).
+window.__favuLogoBase64 = null;
+window.carregarLogoFavuBase64 = async function() {
+    if (window.__favuLogoBase64) return window.__favuLogoBase64;
+    try {
+        const resp = await fetch('./images/favu.png');
+        const blob = await resp.blob();
+        const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+        window.__favuLogoBase64 = base64;
+        return base64;
+    } catch (e) {
+        console.warn('Não foi possível carregar o logo FAVU para o Word:', e);
+        return null;
+    }
+};
+
+// Modelo padrão FAVU Cozinha Afetiva para documentos Word: logo + cores da marca (moss/rust),
+// tabela com colunas de largura igual ocupando 100% da página (altura cresce, largura não).
+window.exportarGastosWord = async function() {
+    const dados = window.prepararDadosExportacaoGastos();
+    if (!dados.temDados) return window.showToast('Nada para exportar.', true);
+
+    window.showToast('Preparando arquivo Word...');
+
+    try {
+        await window.carregarHtmlDocxJs();
+    } catch (e) {
+        console.error(e);
+        return window.showToast('Não foi possível carregar o gerador de Word. Verifique a conexão.', true);
+    }
+
+    const logoBase64 = await window.carregarLogoFavuBase64();
+    const moeda = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const colunas = ['Marca', 'Local', 'Medida', 'Quantidade', 'Unidade', 'Total', 'Comprador', 'Data', 'Nota Fiscal', 'Observação'];
+    const larguraColuna = (100 / colunas.length).toFixed(2);
+    const theadHtml = `<tr>${colunas.map(c => `<th style="width:${larguraColuna}%;">${c}</th>`).join('')}</tr>`;
+
+    const cabecalhoHtml = `
+        <table style="width:100%; border:none; border-collapse:collapse; margin-bottom:4px;">
+            <tr>
+                <td style="border:none; width:100px; vertical-align:middle;">${logoBase64 ? `<img src="${logoBase64}" width="96" height="57" style="width:96px; height:57px;">` : `<span style="font-size:16pt; font-weight:bold; color:#1D2814;">FAVU</span>`}</td>
+                <td style="border:none; text-align:right; vertical-align:middle;">
+                    <div style="font-size:14pt; font-weight:bold; color:#E09F41; font-family:'Segoe UI', Arial, sans-serif;">Gastos do Período</div>
+                    <div style="font-size:9pt; color:#46493A; font-family:'Segoe UI', Arial, sans-serif;">${dados.periodoLabel}</div>
+                </td>
+            </tr>
+        </table>
+        <div style="border-top:2px solid #E09F41; margin-bottom:8px;"></div>`;
+
+    let corpo = cabecalhoHtml;
+
+    dados.grupos.forEach(g => {
+        corpo += `<div style="background:#1D2814; color:#ffffff; padding:4px 8px; font-size:9.5pt; font-weight:bold; font-family:'Segoe UI', Arial, sans-serif; margin-top:8px;">${g.item.nome} — ${moeda(g.totalItem)}</div>`;
+        corpo += `<table style="table-layout:fixed; width:100%; border-collapse:collapse; margin-bottom:4px; font-family:'Segoe UI', Arial, sans-serif;">
+            <thead>${theadHtml}</thead>
+            <tbody>`;
+        g.lista.forEach(l => {
+            const notaUrl = String(l.notaFiscalUrl || '').trim();
+            const notaHref = notaUrl ? (/^https?:\/\//i.test(notaUrl) ? notaUrl : `https://${notaUrl}`) : '';
+            const notaCell = notaUrl
+                ? `<a href="${notaHref}" style="display:inline-block; padding:0px 6px; background:#E09F41; color:#ffffff; border-radius:8px; text-decoration:none; font-size:6.5pt; white-space:nowrap;">Nota</a>`
+                : '';
+            corpo += `<tr>
+                <td>${l.marca || l.nome || ''}</td>
+                <td>${window.formatarLocalComTagGastoWord(l.localCompra)}</td>
+                <td>${l.peso || ''}</td>
+                <td>${(Number(l.quantidade) || 0).toLocaleString('pt-BR')}</td>
+                <td>${moeda(l.valorUnidade)}</td>
+                <td>${moeda(l.valorTotal)}</td>
+                <td>${l.comprador || ''}</td>
+                <td>${window.formatarDataCurtaGasto(l.dataCompra)}</td>
+                <td>${notaCell}</td>
+                <td>${l.observacao || ''}</td>
+            </tr>`;
+        });
+        corpo += `</tbody></table>`;
+    });
+
+    corpo += `<div style="background:#E09F41; color:#1D2814; padding:6px; font-size:11pt; font-weight:bold; text-align:right; font-family:'Segoe UI', Arial, sans-serif; margin-top:8px;">TOTAL GERAL: ${moeda(dados.totalGeral)}</div>`;
+
+    const estilos = `
+        <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; color: #1D2814; font-size: 7.5pt; line-height: 1.1; }
+            table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #46493A; padding: 2px 3px; text-align: left; font-size: 7.5pt; word-wrap: break-word; overflow-wrap: break-word; vertical-align: top; line-height: 1.1; }
+            th { background: #1D2814; color: #ffffff; font-size: 7.5pt; padding: 3px; }
+        </style>`;
+    const htmlCompleto = `<!DOCTYPE html><html><head><meta charset="utf-8">${estilos}</head><body>${corpo}</body></html>`;
+
+    try {
+        // Paisagem + margens menores (0,5") = mais colunas cabem por linha e menos texto
+        // quebra em 2+ linhas por célula, reduzindo ainda mais o total de páginas.
+        const blob = window.htmlDocx.asBlob(htmlCompleto, {
+            orientation: 'landscape',
+            margins: { top: 720, bottom: 720, left: 720, right: 720, header: 360, footer: 360, gutter: 0 }
+        });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Gastos_${dados.periodoArquivo}.docx`;
+        link.click();
+        window.showToast('Download iniciado!');
+        window.closeModal('modal-exportar-gastos');
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao gerar o arquivo Word.', true);
+    }
+};
+
+// Export antigo em CSV — mantido intacto (não é mais chamado pelo botão, que agora abre o popup acima),
+// disponível caso seja necessário reativar rapidamente.
+window.exportarGastosMesCSV = function() {
+    const dados = window.prepararDadosExportacaoGastos ? window.prepararDadosExportacaoGastos() : null;
+    const mes = dados ? dados.mes : Number(document.getElementById('gastos-mes-filtro')?.value || (new Date().getMonth() + 1));
+    const ano = dados ? dados.ano : Number(document.getElementById('gastos-ano')?.value || new Date().getFullYear());
+    const nomeMes = dados ? dados.nomeMes : (window.GASTOS_NOMES_MESES[mes - 1] || '');
+
+    if (!dados || !dados.temDados) {
+        return window.showToast(`Nenhum gasto lançado em ${nomeMes}/${ano}.`, true);
+    }
+
+    const linhas = [];
+    dados.grupos.forEach(({ item, lista, totalItem }) => {
+        lista.forEach(l => {
+            const total = Number(l.valorTotal) || 0;
+            linhas.push([
+                item.nome || '',
+                l.marca || l.nome || '',
+                l.localCompra || '',
+                l.peso || '',
+                String(l.quantidade || 0).replace('.', ','),
+                (Number(l.valorUnidade) || 0).toFixed(2).replace('.', ','),
+                total.toFixed(2).replace('.', ','),
+                l.comprador || '',
+                l.dataCompra || '',
+                l.notaFiscalUrl || ''
+            ]);
+        });
+        linhas.push([`Subtotal ${item.nome}`, '', '', '', '', '', totalItem.toFixed(2).replace('.', ','), '', '', '']);
+        linhas.push([]);
+    });
+
+    const cabecalho = ['Item', 'Marca', 'Local de Compra', 'Medida', 'Quantidade', 'Unidade', 'Valor Total', 'Comprador', 'Data', 'Nota Fiscal'];
+    const escaparCSV = (valor) => {
+        const texto = String(valor === undefined || valor === null ? '' : valor);
+        return /[",;\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+    };
+
+    let csv = cabecalho.map(escaparCSV).join(',') + '\n';
+    linhas.forEach(linha => { csv += linha.map(escaparCSV).join(',') + '\n'; });
+    csv += ['TOTAL GERAL', '', '', '', '', '', dados.totalGeral.toFixed(2).replace('.', ','), '', '', ''].map(escaparCSV).join(',') + '\n';
+
+    const blob = new Blob(["﻿" + csv], { type: 'text/csv;charset=utf-8;' }); // "﻿" resolve acentos no Excel (BOM)
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Gastos_${nomeMes}_${ano}.csv`;
+    link.click();
+
+    window.showToast('Download iniciado!');
+};
+
+
+
+// =====================================================================
+// GASTOS (2026-10): filtro de item + limpar + exportar Excel também na aba "Tabela"
+// =====================================================================
+const trocarSubAbaGastosFiltrosOriginal = window.trocarSubAbaGastos;
+window.trocarSubAbaGastos = function(aba) {
+    const retorno = trocarSubAbaGastosFiltrosOriginal.apply(this, arguments);
+    const itemWrap = document.getElementById('gastos-filtro-item-wrap');
+    const acoesWrap = document.getElementById('gastos-filtros-acoes');
+    if (itemWrap) itemWrap.style.display = '';
+    if (acoesWrap) acoesWrap.style.display = '';
+    const btnMes = document.getElementById('gastos-btn-exportar-mes');
+    const btnPlanilha = document.getElementById('gastos-btn-exportar-planilha');
+    if (btnMes) btnMes.style.display = aba === 'lancamentos' ? '' : 'none';
+    if (btnPlanilha) btnPlanilha.style.display = aba === 'lancamentos' ? 'none' : '';
+    return retorno;
+};
+setTimeout(() => { try { window.trocarSubAbaGastos(window.gastosSubAbaAtiva || 'gastos'); } catch (e) {} }, 500);
+
+function carregarSheetJSAdmin() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        sc.onload = () => resolve(window.XLSX);
+        sc.onerror = reject;
+        document.head.appendChild(sc);
+    });
+}
+
+window.exportarPlanilhaGastosExcel = async function() {
+    const ano = Number(document.getElementById('gastos-ano')?.value) || new Date().getFullYear();
+    const filtroItem = document.getElementById('gastos-filtro-item')?.value || '';
+    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    let itens = [...allGastosItens].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }));
+    if (filtroItem) itens = itens.filter(i => i.id === filtroItem);
+    if (!itens.length) return window.showToast('Nenhum item para exportar.', true);
+
+    const linhas = [['Item', ...meses, 'Total do ano', 'Unidades no ano']];
+    const totaisMes = Array(12).fill(0);
+    let totalGeral = 0;
+    itens.forEach(item => {
+        const resumo = calcularResumoGastosItem(item, ano);
+        const valores = [];
+        let totalItem = 0, unidades = 0;
+        for (let m = 1; m <= 12; m++) {
+            const v = Math.round((Number(resumo[m]?.total) || 0) * 100) / 100;
+            valores.push(v); totaisMes[m - 1] += v; totalItem += v;
+            unidades += Number(resumo[m]?.qtd) || 0;
+        }
+        totalGeral += totalItem;
+        linhas.push([item.nome || '', ...valores, Math.round(totalItem * 100) / 100, unidades]);
+    });
+    linhas.push(['TOTAL MENSAL', ...totaisMes.map(v => Math.round(v * 100) / 100), Math.round(totalGeral * 100) / 100, '']);
+
+    const nomeArquivo = `gastos_${ano}${filtroItem ? '_' + (itens[0].nome || 'item').replace(/[^\w-]+/g, '_') : ''}`;
+    try {
+        const XLSX = await carregarSheetJSAdmin();
+        const ws = XLSX.utils.aoa_to_sheet(linhas);
+        ws['!cols'] = [{ wch: 28 }, ...meses.map(() => ({ wch: 11 })), { wch: 14 }, { wch: 14 }];
+        for (let r = 1; r < linhas.length; r++) {
+            for (let c = 1; c <= 13; c++) {
+                const cel = ws[XLSX.utils.encode_cell({ r, c })];
+                if (cel && typeof cel.v === 'number') cel.z = '"R$" #,##0.00';
+            }
+        }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `Gastos ${ano}`);
+        XLSX.writeFile(wb, `${nomeArquivo}.xlsx`);
+    } catch (e) {
+        // Sem internet para a biblioteca: gera CSV, que também abre no Excel.
+        const csv = linhas.map(l => l.map(v => typeof v === 'number' ? String(v).replace('.', ',') : `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = `${nomeArquivo}.csv`; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+};
+
+// =====================================================================
+// GASTOS (2026-10): gerenciar marcas — renomear e excluir em um só lugar.
+// Renomear atualiza também todos os lançamentos que usam a marca.
+// =====================================================================
+function listaMarcasGastoComUso() {
+    const mapa = new Map();
+    (window.allGastosMarcas || []).forEach(m => {
+        const nome = String(m.nome || m.marca || '').trim();
+        if (!nome) return;
+        const chave = window.normalizarMarcaGasto(nome);
+        if (!mapa.has(chave)) mapa.set(chave, { nome, docs: [], usos: 0 });
+        mapa.get(chave).docs.push(m.id);
+    });
+    (allGastosLancamentos || []).forEach(l => {
+        const nome = String(l.marca || '').trim();
+        if (!nome) return;
+        const chave = window.normalizarMarcaGasto(nome);
+        if (!mapa.has(chave)) mapa.set(chave, { nome, docs: [], usos: 0 });
+        mapa.get(chave).usos++;
+    });
+    return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
+window.abrirModalMarcasGasto = function() {
+    let modal = document.getElementById('modal-marcas-gasto');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-marcas-gasto';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:520px; border:2px solid var(--favu-rust);">
+                <div class="modal-header"><h3 style="color:var(--favu-rust);">Marcas</h3><button class="close-modal" onclick="window.closeModal('modal-marcas-gasto')">&times;</button></div>
+                <div class="modal-body">
+                    <input type="text" id="busca-marcas-gasto" class="search-bar" placeholder="Buscar marca..." oninput="window.renderListaMarcasGasto()" style="margin:0;">
+                    <div id="lista-marcas-gasto" class="marcas-gasto-lista"></div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    const busca = document.getElementById('busca-marcas-gasto');
+    if (busca) busca.value = '';
+    window.renderListaMarcasGasto();
+    window.openModal('modal-marcas-gasto');
+};
+
+window.renderListaMarcasGasto = function() {
+    const box = document.getElementById('lista-marcas-gasto');
+    if (!box) return;
+    const termo = window.normalizarMarcaGasto(document.getElementById('busca-marcas-gasto')?.value || '');
+    const marcas = listaMarcasGastoComUso().filter(m => !termo || window.normalizarMarcaGasto(m.nome).includes(termo));
+    window.__marcasGastoLista = marcas;
+    box.innerHTML = marcas.length ? marcas.map((m, i) => `
+        <div class="marca-gasto-row">
+            <div><input type="text" value="${escapeHTMLGasto(m.nome)}" data-idx="${i}" class="marca-gasto-nome-input" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.renomearMarcaGasto(${i}, this.value);}"><small>${m.usos} lançamento(s)</small></div>
+            <button type="button" class="btn-action edit" title="Salvar novo nome" onclick="window.renomearMarcaGasto(${i}, this.closest('.marca-gasto-row').querySelector('input').value)"><i class="fas fa-check"></i></button>
+            <button type="button" class="btn-action del" title="Excluir da lista" onclick="window.closeModal('modal-marcas-gasto'); window.excluirMarcaGasto(window.__marcasGastoLista[${i}].nome)"><i class="fas fa-trash"></i></button>
+        </div>`).join('') : '<small style="color:#999;">Nenhuma marca encontrada.</small>';
+};
+
+window.renomearMarcaGasto = async function(idx, novoNomeBruto) {
+    const marca = (window.__marcasGastoLista || [])[idx];
+    const novoNome = String(novoNomeBruto || '').trim();
+    if (!marca || !novoNome) return window.showToast('Informe o novo nome da marca.', true);
+    if (novoNome === marca.nome) return window.showToast('O nome não mudou.');
+
+    const chaveAntiga = window.normalizarMarcaGasto(marca.nome);
+    const chaveNova = window.normalizarMarcaGasto(novoNome);
+    const existente = listaMarcasGastoComUso().find(m => window.normalizarMarcaGasto(m.nome) === chaveNova && chaveNova !== chaveAntiga);
+
+    const executar = async () => {
+        window.mostrarLoading?.(true);
+        try {
+            const ops = [];
+            // Marca cadastrada: renomeia (ou remove, se for juntar com uma já existente).
+            marca.docs.forEach(id => ops.push(existente ? deleteDoc(doc(db, 'gastos_marcas', id)) : updateDoc(doc(db, 'gastos_marcas', id), { nome: novoNome })));
+            if (!marca.docs.length && !existente) ops.push(addDoc(collection(db, 'gastos_marcas'), { nome: novoNome, createdAt: Date.now() }));
+            // Lançamentos que usavam a marca antiga.
+            allGastosLancamentos
+                .filter(l => window.normalizarMarcaGasto(l.marca || '') === chaveAntiga)
+                .forEach(l => ops.push(updateDoc(doc(db, 'gastos_lancamentos', l.id), { marca: novoNome, nome: novoNome, updatedAt: Date.now() })));
+            await Promise.all(ops);
+            window.showToast('Marca atualizada!');
+            setTimeout(() => window.renderListaMarcasGasto(), 400);
+        } catch (e) {
+            console.error(e);
+            window.showToast('Erro ao renomear marca.', true);
+        }
+        window.mostrarLoading?.(false);
+    };
+
+    if (existente) customConfirm(`Já existe a marca "${existente.nome}". Juntar "${marca.nome}" com ela?`, executar);
+    else executar();
+};
+
+
+// =====================================================================
+// TEMAS DO SITE (2026-10)
+// Coleção "temas": cada tema guarda cores e imagens. "Aplicar" copia o tema
+// para config/tema, que os dois sites de clientes já leem ao abrir.
+// =====================================================================
+const TEMA_PADRAO_BASE = { nome: 'Padrão (claro)', bg: '#F4E6CB', card: '#FFF5EB', txt: '#2C2C2C', acc: '#E09F41', logoPrincipal: '', imgTopo: '', imgRodape: '', logoRodape: '' };
+const CAMPOS_IMG_TEMA = [
+    ['logoPrincipal', 'Logo principal', 'Logo grande da página inicial e do menu lateral'],
+    ['imgTopo', 'Faixa do topo', 'Imagem de fundo do cabeçalho'],
+    ['imgRodape', 'Faixa do rodapé', 'Imagem de fundo do rodapé'],
+    ['logoRodape', 'Logo do rodapé', 'Logo pequena do rodapé (celular)']
+];
+let temasLista = [];
+let temaAtivoId = '';
+
+async function carregarTemas() {
+    try {
+        const [snap, ativo] = await Promise.all([getDocs(collection(db, 'temas')), getDoc(doc(db, 'config', 'tema'))]);
+        temasLista = [];
+        snap.forEach(d => temasLista.push({ id: d.id, ...d.data() }));
+        const atual = ativo.exists() ? ativo.data() : {};
+        temaAtivoId = atual.temaAtivoId || '';
+        if (!temasLista.some(t => t.id === 'padrao')) {
+            // Primeiro uso: cria o tema Padrão com as cores que já estão no site hoje.
+            const padrao = { ...TEMA_PADRAO_BASE, bg: atual.bg || TEMA_PADRAO_BASE.bg, card: atual.card || TEMA_PADRAO_BASE.card, txt: atual.txt || TEMA_PADRAO_BASE.txt, acc: atual.acc || TEMA_PADRAO_BASE.acc, ordem: 0 };
+            await setDoc(doc(db, 'temas', 'padrao'), padrao);
+            temasLista.unshift({ id: 'padrao', ...padrao });
+            if (!temaAtivoId) temaAtivoId = 'padrao';
+        }
+        temasLista.sort((a, b) => (a.id === 'padrao' ? -1 : b.id === 'padrao' ? 1 : (a.ordem || 0) - (b.ordem || 0)));
+        window.renderTemas();
+    } catch (e) { console.error('Erro ao carregar temas:', e); }
+}
+window.carregarTemas = carregarTemas;
+
+window.renderTemas = function() {
+    const box = document.getElementById('lista-temas');
+    if (!box) return;
+    box.innerHTML = temasLista.map(t => {
+        const ativo = t.id === temaAtivoId;
+        const fundo = t.imgTopo ? `background-image:url('${t.imgTopo}');` : `background:${t.bg};`;
+        return `<div class="tema-card ${ativo ? 'ativo' : ''}">
+            <div class="tema-card-preview" style="${fundo}">
+                <div class="tema-card-box" style="background:${t.card}; color:${t.txt};">${t.logoPrincipal ? `<img src="${t.logoPrincipal}" style="max-height:40px; max-width:100%;">` : 'Prévia'}</div>
+                <span class="tema-card-acc" style="background:${t.acc};"></span>
+            </div>
+            <div class="tema-card-body">
+                <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
+                <div class="tema-card-acoes">
+                    <button type="button" class="btn btn-primary" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i> Aplicar</button>
+                    <button type="button" class="btn btn-outline" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
+                    <button type="button" class="btn btn-outline" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
+                    ${t.id !== 'padrao' ? `<button type="button" class="btn btn-danger" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+};
+
+function dadosPublicosTema(t) {
+    const { nome, bg, card, txt, acc, logoPrincipal, imgTopo, imgRodape, logoRodape } = t;
+    return { nome, bg, card, txt, acc, logoPrincipal: logoPrincipal || '', imgTopo: imgTopo || '', imgRodape: imgRodape || '', logoRodape: logoRodape || '' };
+}
+
+window.aplicarTema = function(id) {
+    const t = temasLista.find(x => x.id === id);
+    if (!t) return;
+    customConfirm(`Aplicar o tema "${t.nome}" nos sites agora?`, async () => {
+        window.mostrarLoading(true);
+        try {
+            await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(t), temaAtivoId: id, aplicadoEm: Date.now() });
+            temaAtivoId = id;
+            window.renderTemas();
+            window.showToast(`Tema "${t.nome}" aplicado!`);
+        } catch (e) { console.error(e); customAlert('Erro ao aplicar o tema.', 'Erro'); }
+        window.mostrarLoading(false);
+    });
+};
+
+window.duplicarTema = async function(id) {
+    const t = temasLista.find(x => x.id === id);
+    if (!t) return;
+    await addDoc(collection(db, 'temas'), { ...dadosPublicosTema(t), nome: `${t.nome} (cópia)`, ordem: Date.now() });
+    window.showToast('Tema duplicado!');
+    carregarTemas();
+};
+
+window.excluirTema = function(id) {
+    const t = temasLista.find(x => x.id === id);
+    if (!t || id === 'padrao') return;
+    if (id === temaAtivoId) return customAlert('Este tema está no ar. Aplique outro tema antes de excluir.', 'Atenção');
+    customConfirm(`Excluir o tema "${t.nome}"?`, async () => {
+        await deleteDoc(doc(db, 'temas', id));
+        carregarTemas();
+    });
+};
+
+window.abrirEditorTema = function(id = '') {
+    const t = temasLista.find(x => x.id === id) || { ...TEMA_PADRAO_BASE, nome: '' };
+    let modal = document.getElementById('modal-editor-tema');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-editor-tema';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    window.__temaEdicao = { id, imgs: { logoPrincipal: t.logoPrincipal || '', imgTopo: t.imgTopo || '', imgRodape: t.imgRodape || '', logoRodape: t.logoRodape || '' }, arquivos: {} };
+    const cor = (campo, label) => `<div><label>${label}</label><input type="color" id="tema-${campo}" value="${t[campo] || TEMA_PADRAO_BASE[campo]}"></div>`;
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:620px; border:2px solid var(--favu-rust);">
+            <div class="modal-header"><h3 style="color:var(--favu-rust);">${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
+            <div class="modal-body">
+                <div style="margin-bottom:15px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026"></div>
+                <h4 class="font-display" style="color:var(--favu-moss); font-size:1.3rem; margin:10px 0;">Cores</h4>
+                <div class="form-grid">${cor('bg', 'Fundo principal')}${cor('card', 'Fundo de caixas/menus')}${cor('txt', 'Textos')}${cor('acc', 'Destaque')}</div>
+                <h4 class="font-display" style="color:var(--favu-moss); font-size:1.3rem; margin:15px 0 10px;">Imagens <small style="font-size:0.8rem; color:#999; font-family:var(--font-numbers);">(em branco = imagem padrão)</small></h4>
+                <div class="form-grid">${CAMPOS_IMG_TEMA.map(([campo, label, ajuda]) => `
+                    <div class="tema-img-campo">
+                        <label>${label}</label><small style="color:#999;">${ajuda}</small>
+                        <img id="tema-prev-${campo}" src="${window.__temaEdicao.imgs[campo]}" style="${window.__temaEdicao.imgs[campo] ? '' : 'display:none;'}">
+                        <div style="display:flex; gap:6px;">
+                            <label class="custom-file-upload" style="flex:1; padding:6px 10px; font-size:0.8rem;"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" onchange="window.selecionarImagemTema('${campo}', this)"></label>
+                            <button type="button" class="btn btn-outline" style="padding:6px 10px;" title="Usar padrão" onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i></button>
+                        </div>
+                    </div>`).join('')}</div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn btn-outline" style="flex:1;" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
+                    <button type="button" class="btn btn-primary" style="flex:2;" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
+                </div>
+            </div>
+        </div>`;
+    window.openModal('modal-editor-tema');
+};
+
+window.selecionarImagemTema = function(campo, input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    window.__temaEdicao.arquivos[campo] = file;
+    const prev = document.getElementById(`tema-prev-${campo}`);
+    if (prev) { prev.src = URL.createObjectURL(file); prev.style.display = ''; }
+};
+
+window.limparImagemTema = function(campo) {
+    window.__temaEdicao.imgs[campo] = '';
+    delete window.__temaEdicao.arquivos[campo];
+    const prev = document.getElementById(`tema-prev-${campo}`);
+    if (prev) { prev.src = ''; prev.style.display = 'none'; }
+};
+
+window.salvarTema = async function() {
+    const ed = window.__temaEdicao;
+    const nome = String(document.getElementById('tema-nome')?.value || '').trim();
+    if (!nome) return window.showToast('Dê um nome ao tema.', true);
+    const btn = document.getElementById('btn-salvar-tema');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...'; }
+    try {
+        const imgs = { ...ed.imgs };
+        for (const [campo, file] of Object.entries(ed.arquivos)) {
+            const url = await upImg(file);
+            if (url) imgs[campo] = url;
+        }
+        const dados = {
+            nome,
+            bg: document.getElementById('tema-bg').value,
+            card: document.getElementById('tema-card').value,
+            txt: document.getElementById('tema-txt').value,
+            acc: document.getElementById('tema-acc').value,
+            ...imgs
+        };
+        if (ed.id) await updateDoc(doc(db, 'temas', ed.id), dados);
+        else await addDoc(collection(db, 'temas'), { ...dados, ordem: Date.now() });
+        // Se o tema editado é o que está no ar, atualiza o site também.
+        if (ed.id && ed.id === temaAtivoId) await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(dados), temaAtivoId: ed.id, aplicadoEm: Date.now() });
+        window.closeModal('modal-editor-tema');
+        window.showToast('Tema salvo!');
+        carregarTemas();
+    } catch (e) {
+        console.error(e);
+        customAlert('Erro ao salvar o tema.', 'Erro');
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Salvar tema'; }
+};
+
+setTimeout(() => { if (document.getElementById('lista-temas')) carregarTemas(); }, 1500);
+
+// =====================================================================
+// PEDIDOS APAGADOS (2026-10): os pedidos excluídos continuam no banco.
+// Esta tela lista os excluídos e permite restaurar.
+// =====================================================================
+window.abrirModalPedidosApagados = function() {
+    let modal = document.getElementById('modal-pedidos-apagados');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-pedidos-apagados';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:620px; border:2px solid #999;">
+                <div class="modal-header"><h3 style="color:#666;">Pedidos apagados</h3><button class="close-modal" onclick="window.closeModal('modal-pedidos-apagados')">&times;</button></div>
+                <div class="modal-body">
+                    <input type="text" id="busca-apagados" class="search-bar" placeholder="Buscar por nome, telefone ou ID..." oninput="window.renderPedidosApagados()" style="margin:0 0 10px;">
+                    <div id="lista-pedidos-apagados" style="display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow-y:auto;"></div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    document.getElementById('busca-apagados').value = '';
+    window.renderPedidosApagados();
+    window.openModal('modal-pedidos-apagados');
+};
+
+window.renderPedidosApagados = function() {
+    const box = document.getElementById('lista-pedidos-apagados');
+    if (!box) return;
+    const busca = document.getElementById('busca-apagados')?.value || '';
+    const lista = (window.todosPedidos || [])
+        .filter(p => isPedidoExcluidoPainel(p))
+        .filter(p => !busca.trim() || pedidoCombinaBuscaLivre({ ...p, ID_do_Pedido: `${p.ID_do_Pedido} ${p.idOriginal || ''}` }, busca))
+        .sort((a, b) => (b.excluidoEm || 0) - (a.excluidoEm || 0));
+    box.innerHTML = lista.length ? lista.map(p => `
+        <div class="apagado-row">
+            <div>
+                <strong>${escapeHtmlPedido(p.Nome_Cliente || 'Sem nome')}</strong>
+                <small>${escapeHtmlPedido(p.idOriginal || p.ID_do_Pedido)} · ${p.Data_Entrega || '--/--/----'} · R$ ${formatarNumeroMoedaPedido(calcularValorPedido(p))}</small>
+                <small>Apagado em ${p.excluidoEm ? new Date(p.excluidoEm).toLocaleString('pt-BR') : '-'} · estava em: ${escapeHtmlPedido(p.statusAnterior || '-')}</small>
+            </div>
+            <button type="button" class="btn btn-primary" style="padding:8px 12px;" onclick="window.restaurarPedidoApagado('${p._docId}')"><i class="fas fa-undo"></i> Restaurar</button>
+        </div>`).join('') : '<small style="color:#999;">Nenhum pedido apagado.</small>';
+};
+
+window.restaurarPedidoApagado = async function(docId) {
+    const p = (window.todosPedidos || []).find(x => x._docId === docId);
+    if (!p) return;
+    let idRestaurado = p.idOriginal || String(p.ID_do_Pedido || '').replace(/^EX[CD]-/i, '');
+    if ((window.todosPedidos || []).some(x => x !== p && x.ID_do_Pedido === idRestaurado && !isPedidoExcluidoPainel(x))) idRestaurado = docId;
+    window.mostrarLoading(true);
+    try {
+        await updateDoc(doc(db, 'pedidos', docId), {
+            ID_do_Pedido: idRestaurado,
+            Status_do_Pedido: normalizarStatusPedidoFluxo(p.statusAnterior || 'Pedido Recebido'),
+            excluido: false,
+            restauradoEm: Date.now()
+        });
+        window.showToast('Pedido restaurado!');
+        setTimeout(() => window.renderPedidosApagados(), 600);
+    } catch (e) {
+        console.error(e);
+        window.showToast('Erro ao restaurar pedido.', true);
+    }
+    window.mostrarLoading(false);
+};
