@@ -5898,8 +5898,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             <th>Categoria</th>
                             <th style="width: 82px;">Mínimo</th>
                             <th style="width: 140px;">Medida</th>
+                            <th style="width: 250px;">Programação</th>
                             <th>Aviso</th>
-                            <th style="width: 210px;">Programação</th>
                             <th style="width: 105px;">Status</th>
                             <th style="width: 120px;">Ações</th>
                         </tr></thead>
@@ -5949,13 +5949,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
             </div>
 
             <div id="t-tema" class="tab-pane">
-                <!-- 2026-10-15: mesmo padrão da aba Categorias (botão à direita + cartão de título) -->
-                <div class="buttons-area"><button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button></div>
-                <div class="panel-card aba-titulo-card">
-                    <h2 class="font-display">Temas do Site</h2>
-                    <p class="aba-titulo-ajuda">Cadastre os temas com antecedência (ex.: Natal) e troque os dois sites com um clique em <strong>Aplicar</strong>.</p>
-                </div>
-                <div id="lista-temas" class="temas-grid panel-card"></div>
+                <!-- 2026-10-15: duas seções, cada uma num cartão que reúne tudo dela -->
+                <section class="panel-card secao-aba" id="secao-temas">
+                    <div class="secao-aba-cabecalho">
+                        <h2 class="font-display">Temas do Site</h2>
+                        <button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button>
+                    </div>
+                    <div id="lista-temas" class="temas-grid"></div>
+                </section>
                 <form id="form-cores" class="form-grid panel-card" style="display:none;">
                     <div><label>Fundo Principal</label><input type="color" id="cor-bg" value="#F4E6CB"></div>
                     <div><label>Fundo de Caixas/Menus</label><input type="color" id="cor-card" value="#FFF5EB"></div>
@@ -5964,11 +5965,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     <button type="submit" class="btn btn-primary" style="grid-column: 1 / -1;">Salvar</button>
                 </form>
 
-                <div class="panel-card aba-titulo-card" style="margin-top: 30px;">
-                    <h2 class="font-display">Imagens do Carrossel</h2>
-                    <p class="aba-titulo-ajuda">Fotos da página inicial. Arraste para mudar a ordem e clique em <strong>Salvar ordem</strong>.</p>
-                </div>
-                <form id="form-carrossel" class="panel-card" style="display:flex; flex-direction: column; gap:15px;">
+                <section class="panel-card secao-aba" id="secao-carrossel">
+                    <div class="secao-aba-cabecalho">
+                        <h2 class="font-display">Imagens do Carrossel</h2>
+                    </div>
+                <form id="form-carrossel" class="secao-aba-bloco" style="display:flex; flex-direction: column; gap:15px;">
                     <div>
                         <label>Enviar Fotos Novas (Múltiplas permitidas)</label>
                         <label class="custom-file-upload">
@@ -5979,11 +5980,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     </div>
                     <div id="car-drop" class="carrossel-upload-drop"><i class="fas fa-images"></i> Ou arraste as fotos do computador para cá</div>
                     <div id="car-previas" class="carrossel-upload-previas"></div>
-                    <button type="submit" class="btn btn-secondary" id="btn-up-car" style="width: 100%;"><i class="fas fa-upload"></i> Adicionar ao Carrossel</button>
+                    <button type="submit" class="btn btn-primary" id="btn-up-car" style="width: 100%;"><i class="fas fa-upload"></i> Adicionar ao Carrossel</button>
                 </form>
                 <div id="carrossel-aviso-padrao" class="carrossel-aviso" style="display:none;"></div>
                 <div id="carrossel-ordem-bar" class="carrossel-ordem-bar"><span><i class="fas fa-info-circle"></i> A ordem mudou. Salve para aplicar no site.</span><div class="btns"><button type="button" class="btn btn-outline" onclick="window.desfazerOrdemCarrossel()">Desfazer</button><button type="button" class="btn btn-primary" onclick="window.salvarOrdemCarrosselBtn()"><i class="fas fa-save"></i> Salvar ordem</button></div></div>
-                <div id="galeria-preview" class="panel-card carrossel-admin-grid"></div>
+                <div id="galeria-preview" class="carrossel-admin-grid"></div>
+                </section>
             </div>
 
             <div id="t-orcamentos" class="tab-pane" style="position: relative; padding-bottom: 80px; background-color: var(--bg-color);">
@@ -6012,14 +6014,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
         <!-- NOVA ABA DE HORÁRIOS RESTRITOS -->
 
+            <!-- 2026-10-15: mesmo padrão da aba Categorias. O cadastro abre numa janela. -->
             <div id="t-cupons" class="tab-pane">
-                <div class="panel-card cupom-header-panel">
-                    <h2 class="font-display cupom-title"><i class="fas fa-ticket-alt"></i> Cupons</h2>
+                <div class="buttons-area"><button type="button" class="btn btn-primary" onclick="window.abrirCadastroCupom()"><i class="fas fa-plus"></i> Cadastrar cupom</button></div>
+                <div class="panel-card cupons-cabecalho" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
+                    <h2 class="font-display" style="margin: 0; font-size: 1.8rem; color: var(--favu-green);">Cupons</h2>
+                    <div class="search-filter-actions cupom-search-actions">
+                        <input type="text" id="search-cupom" class="search-bar" style="margin: 0;" placeholder="Buscar cupom..." oninput="window.renderCupons()">
+                        <button type="button" class="btn btn-outline btn-clear-filter" onclick="window.limparFiltroCupons()"><i class="fas fa-eraser"></i> Limpar Filtros</button>
+                    </div>
                 </div>
 
-                <div class="cupons-grid">
-                    <div class="panel-card cupom-form-card">
-                        <h3 class="font-display cupom-section-title">Cadastrar Cupom</h3>
+                <div class="cupons-tabs">
+                    <button type="button" id="tab-cupons-ativos" class="cupons-tab-btn active" onclick="window.setFiltroCupons('ativos')">Cupons Ativos</button>
+                    <button type="button" id="tab-cupons-inativos" class="cupons-tab-btn" onclick="window.setFiltroCupons('inativos')">Cupons Inativos</button>
+                </div>
+                <div class="panel-card cupom-list-card">
+                    <div id="cupons-lista" class="cupons-lista"></div>
+                </div>
+            </div>
+
+            <div id="modal-cadastrar-cupom" class="modal" onclick="if(event.target === this) window.fecharCadastroCupom()">
+                <div class="modal-content" style="max-width: 520px;">
+                    <div class="modal-header">
+                        <h3>Cadastrar Cupom</h3>
+                        <button class="close-modal" onclick="window.fecharCadastroCupom()">&times;</button>
+                    </div>
+                    <div class="modal-body">
                         <form id="form-cupom">
                             <input type="hidden" id="cupom-id-original">
                             <div class="form-grid">
@@ -6058,25 +6079,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                                 </div>
                             </div>
                             <div class="cupom-form-actions">
-                                <button type="button" class="btn btn-secondary" onclick="window.limparFormCupom()">Cancelar</button>
+                                <button type="button" class="btn btn-secondary" onclick="window.fecharCadastroCupom()">Cancelar</button>
                                 <button type="submit" class="btn btn-primary">Salvar Cupom</button>
                             </div>
                         </form>
-                    </div>
-
-                    <div class="panel-card cupom-list-card">
-                        <div class="cupom-list-header-inline">
-                            <h3 class="font-display cupom-section-title">Cupons Cadastrados</h3>
-                            <div class="search-filter-actions cupom-search-actions">
-                                <input type="text" id="search-cupom" class="search-bar" style="margin: 0;" placeholder="Buscar cupom..." oninput="window.renderCupons()">
-                                <button type="button" class="btn btn-outline btn-clear-filter" onclick="window.limparFiltroCupons()"><i class="fas fa-eraser"></i> Limpar Filtros</button>
-                            </div>
-                        </div>
-                        <div class="cupons-tabs">
-                            <button type="button" id="tab-cupons-ativos" class="cupons-tab-btn active" onclick="window.setFiltroCupons('ativos')">Cupons Ativos</button>
-                            <button type="button" id="tab-cupons-inativos" class="cupons-tab-btn" onclick="window.setFiltroCupons('inativos')">Cupons Inativos</button>
-                        </div>
-                        <div id="cupons-lista" class="cupons-lista"></div>
                     </div>
                 </div>
             </div>
@@ -6331,6 +6337,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                                 <label>Mensagem de aviso para os clientes:</label>
                                 <input type="text" id="exc-mensagem" placeholder="Ex: Estaremos fechados nesta data.">
                             </div>
+                            <div class="input-group exc-categorias-group">
+                                <label>Restringir categorias</label>
+                                <small class="campo-ajuda">Sem nenhuma marcada, a regra vale para todos os pedidos. Marcando, vale só para pedidos com itens dessas categorias.</small>
+                                <div id="exc-categorias" class="exc-categorias-lista"></div>
+                            </div>
                             <div style="display:flex; gap:10px; margin-top: 18px;">
                                 <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-add-excecao', 'form-add-excecao')" style="flex:1;">Cancelar</button>
                                 <button type="submit" class="btn btn-primary" style="flex:1;">Salvar</button>
@@ -6365,6 +6376,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         <div id="edit-container-exc-msg" class="input-group" style="display:none;">
                             <label>Mensagem exibida no site:</label>
                             <input type="text" id="edit-exc-mensagem" placeholder="Ex: Estaremos fechados nesta data.">
+                        </div>
+                        <div class="input-group exc-categorias-group">
+                            <label>Restringir categorias</label>
+                            <small class="campo-ajuda">Sem nenhuma marcada, a regra vale para todos os pedidos. Marcando, vale só para pedidos com itens dessas categorias.</small>
+                            <div id="edit-exc-categorias" class="exc-categorias-lista"></div>
                         </div>
                         <div style="display:flex; gap:10px; margin-top: 18px;">
                             <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editar-excecao', 'form-edit-excecao')" style="flex:1;">Cancelar</button>
@@ -12390,7 +12406,7 @@ html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: now
 
 /* E: computador e tablet — tabelas sempre cabem na largura e total fixo no rodapé */
 @media (min-width: 901px) {
-    html body #t-gastos .gastos-rebuild-table-card { overflow-x: hidden !important; }
+    html body #t-gastos .gastos-rebuild-table-card { overflow-x: visible !important; }
     /* Tablets (901–1024px): a regra geral do painel transforma tabelas em cartões; nos gastos fica tabela. */
     html body #t-gastos table.gastos-rebuild-table { display: block !important; }
     html body #t-gastos table.gastos-rebuild-table > thead { display: table !important; width: 100% !important; table-layout: fixed !important; }
@@ -12437,7 +12453,19 @@ html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: now
     html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper { flex-wrap: nowrap !important; flex-direction: row !important; justify-content: center !important; gap: 3px !important; }
     html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper .btn-action { width: 26px !important; height: 26px !important; min-width: 0 !important; padding: 0 !important; font-size: 0.75rem !important; }
     /* Totais: rodapé da própria tabela (fora da área que rola). Tabela e Lista com o mesmo visual. */
-    html body #t-gastos table.gastos-rebuild-table > tfoot.gastos-total-tfoot { display: table !important; width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; }
+    html body #t-gastos table.gastos-rebuild-table > tfoot.gastos-total-tfoot { display: table !important; width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important;
+        position: fixed !important; bottom: 12px !important; z-index: 950 !important; box-shadow: 0 6px 22px rgba(0,0,0,0.28) !important; border-radius: 12px !important; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td:first-child { border-top-left-radius: 12px; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td:last-child { border-top-right-radius: 12px; }
+    /* Como no celular: a página rola (não a tabela), o cabeçalho das colunas fica preso
+       no topo e há espaço no fim para a última linha ficar acima da barra de total. */
+    html body #t-gastos .gastos-rebuild-table-card { overflow: visible !important; }
+    html body #t-gastos table.gastos-rebuild-table { overflow: visible !important; }
+    html body #t-gastos #gastos-painel-resumo > .gastos-rebuild-table-card.table-responsive,
+    html body #t-gastos #gastos-painel-lancamentos.gastos-rebuild-table-card.table-responsive { overflow: visible !important; }
+    html body #t-gastos table.gastos-rebuild-table > tbody { max-height: none !important; overflow: visible !important; height: auto !important; }
+    html body #t-gastos table.gastos-rebuild-table > thead { position: sticky !important; top: var(--gastos-thead-top, 0px) !important; z-index: 900 !important; }
+    html body #t-gastos.tab-pane { padding-bottom: 95px !important; }
     html body #t-gastos tfoot.gastos-total-tfoot > tr { display: table-row !important; position: static !important; box-shadow: none !important; background: transparent !important; }
     html body #t-gastos tfoot.gastos-total-tfoot > tr > td { position: static !important; background: var(--favu-green) !important; color: #fff !important; border: none !important; border-top: 3px solid var(--favu-rust) !important; padding: 14px 4px !important; vertical-align: middle !important; text-align: center !important; font-family: var(--font-numbers) !important; font-weight: 700 !important; font-size: 0.8rem !important; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
     html body #t-gastos tfoot.gastos-total-tfoot > tr > td * { color: #fff !important; font-size: inherit; }
@@ -12493,9 +12521,136 @@ html body .tab-pane .buttons-area .btn-primary, html body #t-gastos .gastos-rebu
 
 /* Lista de temas dentro de cartão branco */
 html body #t-tema #lista-temas.panel-card { padding: 20px !important; }
+
+/* =====================================================================
+   RODADA 2026-10-15 (6)
+   ===================================================================== */
+/* Sem botões azuis: o secundário é verde-escuro, como o "Cancelar" das janelas */
+html body .orc-popup .btn-secondary-form, html body #modal-orcamento-pedido .btn-secondary-form, html body #modal-orcamento-cliente .btn-secondary-form { background-color: var(--favu-green) !important; color: #fff !important; }
+html body .orc-popup .btn-secondary-form[style*="favu-rust"], html body #modal-orcamento-pedido .btn-secondary-form[style*="favu-rust"] { background-color: var(--favu-rust) !important; }
+/* Número das unidades centralizado nos resumos */
+html body #popup-resumo-itens-orc input[type="number"], html body .resumo-itens input[type="number"] { text-align: center !important; padding: 0 !important; -moz-appearance: textfield; }
+html body #popup-resumo-itens-orc input[type="number"]::-webkit-inner-spin-button, html body .resumo-itens input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Seletor de datas (pedidos e gastos): cabe na janela e botões no padrão */
+html body .date-picker-content { box-sizing: border-box; width: min(380px, calc(100vw - 30px)) !important; padding: 20px !important; }
+html body .date-picker-calendar { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; gap: 5px !important; }
+html body .date-picker-calendar > * { min-width: 0 !important; box-sizing: border-box !important; }
+html body .date-picker-day { padding: 10px 0 !important; min-height: 38px !important; display: flex; align-items: center; justify-content: center; border: 1px solid #eee; }
+html body .date-picker-day.selected, html body .date-picker-day.range-start, html body .date-picker-day.range-end { background: var(--favu-rust) !important; color: #fff !important; border-color: var(--favu-rust) !important; }
+html body .date-picker-day.in-range { background: rgba(224,159,65,0.18) !important; }
+html body .date-picker-day.today { border: 2px solid var(--favu-rust) !important; }
+html body .date-picker-weekday { padding: 6px 0 !important; }
+html body .date-picker-btn { background: #fff !important; color: var(--favu-green) !important; border: 1px solid rgba(29,40,20,0.15) !important; border-radius: 30px !important; padding: 10px 8px !important; font-size: 0.85rem !important; text-transform: uppercase; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+html body .date-picker-btn:hover { background: var(--favu-green) !important; color: #fff !important; }
+
+/* Filtros: título à esquerda e filtros à direita (Tabela e Lista iguais), sem caixa bege */
+@media (min-width: 901px) {
+    html body #t-gastos .gastos-rebuild-header { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; flex-wrap: wrap !important; gap: 15px !important; padding: 15px 20px !important; }
+    html body #t-gastos .gastos-rebuild-header .gastos-rebuild-title { margin: 0 !important; flex: 0 0 auto; }
+    html body #t-gastos #filter-bar-gastos { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; justify-content: flex-end !important; gap: 10px !important; margin: 0 0 0 auto !important; width: auto !important; max-width: 100% !important; background: transparent !important; border: none !important; padding: 0 !important; box-shadow: none !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main, html body #t-gastos #filter-bar-gastos .filter-group-additional { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; gap: 10px !important; width: auto !important; margin: 0 !important; padding: 0 !important; background: transparent !important; border: none !important; }
+    html body #t-gastos #filter-bar-gastos .filter-item { width: auto !important; min-width: 0 !important; margin: 0 !important; flex: 0 0 auto !important; position: static !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-additional .filter-item { align-self: flex-end; }
+    html body #t-gastos #filter-bar-gastos .filter-item select, html body #t-gastos #filter-bar-gastos .filter-item input { min-width: 170px; }
+}
+/* Pedidos: filtros num cartão branco, como os cartões das outras abas */
+html body #t-pedidos #filter-bar-pedidos { background: #fff !important; border: 1px solid #eee !important; border-radius: 15px !important; box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; }
+html body #t-pedidos .card-faturamento { background: var(--favu-card) !important; border: 1px solid rgba(224,159,65,0.25) !important; box-shadow: none !important; }
+/* Botões de filtro/exportação iguais em todas as abas (como "Limpar filtros" de Categorias) */
+html body .tab-pane .btn-clear-filter, html body #t-gastos #gastos-btn-exportar-mes, html body #t-gastos #gastos-btn-exportar-planilha { background: #fff !important; color: var(--favu-green) !important; border: 1px solid #ddd !important; border-radius: 10px !important; padding: 10px 15px !important; font-size: 0.9rem !important; white-space: nowrap; }
+html body .tab-pane .filter-item label, html body .tab-pane .filter-bar label { font-family: 'Basic Choice', cursive !important; color: #46493A !important; font-size: 0.85rem !important; text-transform: uppercase; }
+html body .tab-pane .filter-bar select, html body .tab-pane .filter-bar input { border-radius: 10px !important; border: 1px solid rgba(224,159,65,0.35) !important; background: #fff !important; }
+
+/* Temas e Carrossel: uma seção (cartão) para cada */
+html body #t-tema .secao-aba { padding: 20px !important; margin-bottom: 20px !important; }
+html body #t-tema .secao-aba-cabecalho { display: flex; justify-content: space-between; align-items: center; gap: 15px; flex-wrap: wrap; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #f0e6d6; }
+html body #t-tema .secao-aba-cabecalho h2.font-display { margin: 0 !important; font-size: 1.8rem !important; color: var(--favu-green) !important; }
+html body #t-tema .secao-aba-bloco { background: var(--favu-card); border: 1px solid rgba(224,159,65,0.2); border-radius: 12px; padding: 15px; margin-bottom: 15px; }
+html body #t-tema #lista-temas { padding: 0 !important; background: transparent !important; box-shadow: none !important; border: none !important; }
+html body #t-tema #galeria-preview { padding: 0 !important; background: transparent !important; box-shadow: none !important; border: none !important; }
+@media (max-width: 600px) {
+    html body #t-tema #galeria-preview.carrossel-admin-grid { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+    html body #t-tema #galeria-preview .carrossel-item { width: auto !important; height: auto !important; min-width: 0 !important; }
+    html body #t-tema #galeria-preview .carrossel-item img { width: 100% !important; height: auto !important; aspect-ratio: 1 / 1; object-fit: cover; display: block; }
+    html body #t-tema #galeria-preview .carrossel-item-barra { padding: 4px 6px !important; font-size: 0.75rem; }
+}
+.tema-card-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tema-card-acoes .btn-action { width: 34px; height: 34px; }
+
+/* Editor de temas */
+html body #modal-editor-tema .modal-header h3 { color: var(--favu-green) !important; }
+#modal-editor-tema .tema-secao { border: 1px solid rgba(224,159,65,0.3); border-radius: 14px; padding: 16px; margin-bottom: 14px; background: #fff; }
+#modal-editor-tema .tema-secao-titulo { color: var(--favu-green) !important; font-size: 1.35rem; margin: 0 0 4px; }
+#modal-editor-tema .tema-campo-ajuda { display: block; color: #999; font-size: 0.78rem; line-height: 1.4; font-family: var(--font-numbers); margin: 2px 0 10px; }
+#modal-editor-tema .tema-secao-ajuda { margin-bottom: 14px; }
+#modal-editor-tema .tema-grid { gap: 14px 16px; margin-bottom: 12px; }
+#modal-editor-tema .tema-campo-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+#modal-editor-tema .tema-campo-topo label { margin: 0 !important; font-size: 0.95rem !important; color: #46493A !important; }
+#modal-editor-tema .tema-badge-padrao { font-family: var(--font-numbers); font-size: 0.68rem; color: #777; background: #f1f1f1; border-radius: 10px; padding: 1px 8px; }
+#modal-editor-tema .tema-cor-linha { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#modal-editor-tema .tema-swatch { display: inline-flex; align-items: center; gap: 8px; flex: 1; min-width: 140px; border: 1px solid rgba(224,159,65,0.35); background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; font-family: var(--font-numbers); font-size: 0.8rem; color: #46493A; }
+#modal-editor-tema .tema-swatch-cor { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); flex: 0 0 auto; }
+#modal-editor-tema .tema-cor-reset { border: 1px solid #ddd; background: #fff; border-radius: 10px; padding: 7px 10px; font-size: 0.75rem; color: var(--favu-green); cursor: pointer; font-family: var(--font-numbers); white-space: nowrap; }
+#modal-editor-tema .tema-img-campo { border: 1px dashed rgba(224,159,65,0.45); border-radius: 12px; padding: 12px; background: var(--favu-card); }
+#modal-editor-tema .tema-img-campo img { max-width: 100%; max-height: 70px; object-fit: contain; display: block; margin: 4px 0 8px; background: repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; border-radius: 8px; }
+#modal-editor-tema .tema-img-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#modal-editor-tema .tema-img-acoes .custom-file-upload { margin: 0 !important; padding: 7px 12px !important; font-size: 0.8rem !important; flex: 1; }
+#modal-editor-tema .tema-img-alerta { display: block; font-family: var(--font-numbers); font-size: 0.75rem; color: #b26a00; margin-bottom: 6px; }
+#modal-editor-tema .tema-img-alerta.ok { color: #2e7d32; }
+#modal-editor-tema .tema-img-alerta:empty { display: none; }
+#modal-editor-tema .tema-editor-acoes { display: flex; gap: 10px; margin-top: 18px; }
+#modal-editor-tema .tema-editor-acoes .btn { flex: 1; }
+/* Seletor de cor */
+#seletor-cor-pop { position: fixed; z-index: 100001; background: #fff; border: 1px solid rgba(224,159,65,0.4); border-radius: 14px; box-shadow: 0 12px 35px rgba(0,0,0,0.2); padding: 12px; font-family: var(--font-numbers); max-height: calc(100vh - 20px); overflow-y: auto; }
+#seletor-cor-pop .sc-titulo { font-family: 'Basic Choice', cursive; color: var(--favu-green); font-size: 0.9rem; text-transform: uppercase; margin: 6px 0 6px; }
+#seletor-cor-pop .sc-grade { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+#seletor-cor-pop .sc-sw-wrap { position: relative; }
+#seletor-cor-pop .sc-sw { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.15); cursor: pointer; padding: 0; }
+#seletor-cor-pop .sc-sw.sel { outline: 2px solid var(--favu-rust); outline-offset: 2px; }
+#seletor-cor-pop .sc-sw-x { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; border: none; background: #E60000; color: #fff; font-size: 11px; line-height: 16px; padding: 0; cursor: pointer; display: none; }
+#seletor-cor-pop .sc-sw-wrap:hover .sc-sw-x { display: block; }
+#seletor-cor-pop .sc-vazio { color: #999; font-size: 0.75rem; }
+#seletor-cor-pop .sc-linha { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+#seletor-cor-pop .sc-linha input[type="color"] { width: 38px; height: 34px; padding: 2px; border-radius: 8px; flex: 0 0 auto; }
+#seletor-cor-pop .sc-linha input[type="text"] { flex: 1; min-width: 0; padding: 7px 8px; font-size: 0.85rem; border-radius: 8px; }
+#seletor-cor-pop .sc-linha select { width: 52px; padding: 6px 4px; border-radius: 8px; flex: 0 0 auto; }
+#seletor-cor-pop .sc-btn-icone { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: var(--favu-green); cursor: pointer; flex: 0 0 auto; }
+#seletor-cor-pop .sc-gprev { flex: 1; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); min-width: 40px; }
+#seletor-cor-pop .sc-usar { padding: 8px 12px !important; font-size: 0.85rem !important; flex: 0 0 auto; }
+/* Prévia */
+#modal-previa-tema .previa-tema-content { max-width: 1100px !important; width: 95vw !important; }
+html body #modal-previa-tema .modal-header h3 { color: var(--favu-green) !important; }
+#modal-previa-tema .previa-tema-barra { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+#modal-previa-tema .previa-abas { display: flex; gap: 8px; margin: 0 !important; }
+#modal-previa-tema .previa-tema-moldura { background: #e9e2d6; border-radius: 14px; padding: 10px; display: flex; justify-content: center; }
+#modal-previa-tema .previa-tema-moldura iframe { width: 100%; height: 68vh; border: none; border-radius: 10px; background: #fff; transition: width .2s; }
+#modal-previa-tema .previa-tema-moldura.celular iframe { width: 390px; max-width: 100%; }
+#modal-previa-tema .previa-tema-url { margin-top: 10px; }
+#modal-previa-tema .previa-tema-url label { font-size: 0.85rem !important; }
+
+/* Cupons: busca na mesma linha do título; botões da janela com largura igual */
+html body #t-cupons .cupons-cabecalho .search-filter-actions { display: flex !important; gap: 10px; align-items: center; flex: 0 1 560px !important; width: auto !important; margin: 0 !important; }
+html body #t-cupons .cupons-cabecalho .search-filter-actions .search-bar { flex: 1; min-width: 0; }
+html body #t-cupons .cupons-tabs { display: flex; gap: 10px; margin: 0 0 15px; }
+html body #t-cupons .cupons-tabs .cupons-tab-btn { flex: 0 0 auto !important; width: auto !important; }
+html body #modal-cadastrar-cupom .cupom-form-actions { display: flex; gap: 10px; margin-top: 18px; }
+html body #modal-cadastrar-cupom .cupom-form-actions .btn { flex: 1; }
+@media (max-width: 600px) { html body #t-cupons .cupons-cabecalho .search-filter-actions { flex: 1 1 100% !important; } }
+
+/* Categorias: programação e retirada separadas por uma linha */
+#tbl-categorias .cat-period-line { display: block; }
+#tbl-categorias .cat-period-sep { display: block; height: 0; border-top: 1px dashed rgba(224,159,65,0.45); margin: 6px 0; }
+#tbl-categorias .cat-period-retirada { color: var(--favu-green); }
+
+/* Horários: categorias da data específica */
+.exc-categorias-lista { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 10px; background: var(--favu-card); border: 1px solid rgba(224,159,65,0.25); border-radius: 10px; max-height: 160px; overflow-y: auto; }
+.exc-cat-opcao { display: inline-flex !important; align-items: center; gap: 6px; margin: 0 !important; font-family: var(--font-numbers) !important; font-size: 0.85rem !important; color: var(--favu-green) !important; cursor: pointer; }
+.exc-cat-opcao input { width: auto !important; margin: 0; }
+.campo-ajuda { display: block; color: #999; font-size: 0.78rem; font-family: var(--font-numbers); margin: -2px 0 8px; line-height: 1.4; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-5"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-6"></script>
 
 
     <div id="modal-gasto-item" class="modal">

@@ -1693,6 +1693,34 @@ function formatarDataEntregaCat(iso) {
     return a && m && d ? `${d}/${m}/${a}` : '';
 }
 
+// Linhas "Retirada início/fim" da categoria, com os horários da data específica
+// (aba Horários) ligada a ela naquele dia — ou a agenda normal do dia da semana.
+function horariosResumoDia(dataISO, nomeCategoria) {
+    const regra = (window.cacheExcecoesAgenda || {})[dataISO];
+    let texto = '';
+    if (regra && (!Array.isArray(regra.categorias) || !regra.categorias.length || regra.categorias.includes(nomeCategoria))) {
+        if (regra.indisponivel) return 'fechado';
+        texto = regra.horarios || '';
+    }
+    if (!texto) return '';
+    const lista = window.previewHorariosAdmin ? window.previewHorariosAdmin(texto) : [];
+    if (lista.length > 1) return `${lista[0]} - ${lista[lista.length - 1]}`;
+    if (lista.length === 1) return lista[0];
+    return texto;
+}
+function linhasRetiradaCategoria(c) {
+    const linhas = [];
+    const montar = (rotulo, iso) => {
+        if (!iso) return;
+        const dataBR = formatarDataEntregaCat(iso);
+        const horas = horariosResumoDia(iso, c.nome);
+        linhas.push(`${rotulo}: ${dataBR}${horas ? ` | ${horas}` : ''}`);
+    };
+    montar('Retirada início', c?.entregaInicioData);
+    if (c?.entregaFimData && c.entregaFimData !== c.entregaInicioData) montar('Retirada fim', c.entregaFimData);
+    return linhas;
+}
+
 function descreverPeriodoEntregaCat(c) {
     const ini = formatarDataEntregaCat(c?.entregaInicioData);
     const fim = formatarDataEntregaCat(c?.entregaFimData);
@@ -2043,14 +2071,18 @@ window.renderCatsTable = function() {
             const fimData = normalizeDateBR(fim.data);
             const iniResumo = formatScheduleValue(ini.data, ini.hora);
             const fimResumo = formatScheduleValue(fim.data, fim.hora);
-            const periodoEntregaCat = descreverPeriodoEntregaCat(c);
-            const programacaoLinhas = [
+            // 2026-10-15: Início/Fim da exibição e, separado por uma linha, Início/Fim da
+            // retirada com os horários das datas específicas (Horários) ligadas à categoria.
+            const linhasExibicao = [
                 formatScheduleLine('Início', ini.data, ini.hora),
-                formatScheduleLine('Fim', fim.data, fim.hora),
-                periodoEntregaCat ? `Retirada: ${periodoEntregaCat}` : ''
+                formatScheduleLine('Fim', fim.data, fim.hora)
             ].filter(Boolean);
-            const programacaoHtml = programacaoLinhas.length
-                ? programacaoLinhas.map(linha => `<span class="cat-period-line">${linha}</span>`).join('')
+            const linhasRetirada = linhasRetiradaCategoria(c);
+            const blocos = [];
+            if (linhasExibicao.length) blocos.push(linhasExibicao.map(l => `<span class="cat-period-line">${l}</span>`).join(''));
+            if (linhasRetirada.length) blocos.push(linhasRetirada.map(l => `<span class="cat-period-line cat-period-retirada">${l}</span>`).join(''));
+            const programacaoHtml = blocos.length
+                ? blocos.join('<span class="cat-period-sep"></span>')
                 : '<span class="cat-period-line">-</span>';
 
             tb.innerHTML += `<tr data-cat-id="${c.id}" class="cat-row">
@@ -2059,12 +2091,13 @@ window.renderCatsTable = function() {
                 <td class="cat-name-cell" data-label="Categoria:" onpointerdown="window.catMobilePointerDown(event, '${c.id}')"><strong style="color:var(--favu-rust); font-size:1.1rem;">${c.nome}</strong></td>
                 <td class="cat-min-cell" data-label="Mínimo:">${c.minTotal ?? 0}</td>
                 <td class="cat-medida-cell" data-label="Medida:">${c.tipoColuna || '-'}</td>
-                <td class="cat-notice-cell" data-label="Aviso:"><small class="cat-notice-summary"><span class="cat-notice-desktop">${renderCatNoticeSummary(c.mensagemObs)}</span><span class="cat-notice-mobile">${renderCatNoticeStatus(c.mensagemObs)}</span></small></td>
                 <td class="cat-period-cell desktop-schedule-cell" data-label="Programação:">
                     ${programacaoHtml}
                 </td>
                 <td class="cat-mobile-start mobile-schedule-cell" data-label="Início:">${iniResumo}</td>
                 <td class="cat-mobile-end mobile-schedule-cell" data-label="Fim:">${fimResumo}</td>
+                ${linhasRetirada.length ? `<td class="cat-mobile-retirada mobile-schedule-cell" data-label="Retirada:">${linhasRetirada.map(l => `<span class="cat-period-line">${l.replace(/^Retirada /, '')}</span>`).join('')}</td>` : ''}
+                <td class="cat-notice-cell" data-label="Aviso:"><small class="cat-notice-summary"><span class="cat-notice-desktop">${renderCatNoticeSummary(c.mensagemObs)}</span><span class="cat-notice-mobile">${renderCatNoticeStatus(c.mensagemObs)}</span></small></td>
                 <td class="cat-status-cell" data-label="Status:"><span class="badge ${catStatusVisual.statusClasse}">${catStatusVisual.statusTexto}</span></td>
                 <td class="cat-actions-cell" data-label="Ações:">
                     <div class="action-btns-wrapper">
@@ -6589,10 +6622,11 @@ window.previewHorariosAdmin = function(texto) {
     blocos.forEach(bloco => {
         const partes = bloco.split(/\s+(?:às|as|-)\s+/i);
         if (partes.length === 2) {
-            let [i, f] = partes.map(p => { let m = p.replace(/[^0-9:]/g,'').split(':'); return (parseInt(m[0]||0)*60)+parseInt(m[1]||0); });
+            // "15h30" e "15:30" valem igual (antes "15h30" virava 1530 horas).
+            let [i, f] = partes.map(p => { let m = p.toLowerCase().replace(/(\d)\s*h\s*(\d)/, '$1:$2').replace(/[^0-9:]/g,'').split(':'); return (parseInt(m[0]||0)*60)+parseInt(m[1]||0); });
             for (let m = i; m <= f; m += 30) resultado.push(formata(m));
         } else {
-            let m = bloco.replace(/[^0-9:]/g,'').split(':');
+            let m = bloco.toLowerCase().replace(/(\d)\s*h\s*(\d)/, '$1:$2').replace(/[^0-9:]/g,'').split(':');
             if(m[0]) resultado.push(formata((parseInt(m[0])*60)+parseInt(m[1]||0)));
         }
     });
@@ -6992,6 +7026,10 @@ function formatarDataAgendaBR(dataString) {
 
 function resumoRegraAgenda(regra) {
     if (!regra) return '';
+    const cats = Array.isArray(regra.categorias) && regra.categorias.length ? ` · Só para: ${regra.categorias.join(', ')}` : '';
+    return resumoRegraAgendaBase(regra) + cats;
+}
+function resumoRegraAgendaBase(regra) {
     if (regra.indisponivel) {
         return `Fechado${regra.mensagem ? ` — ${regra.mensagem}` : ''}`;
     }
@@ -7153,7 +7191,8 @@ window.salvarExcecaoData = async function() {
         const payload = {
             indisponivel: !!estaFechado,
             horarios: estaFechado ? "" : horariosTexto,
-            mensagem: estaFechado ? mensagemTexto : ""
+            mensagem: estaFechado ? mensagemTexto : "",
+            categorias: lerCategoriasExcecao('exc-categorias')
         };
 
         await setDoc(doc(db, 'config', 'agenda_excecoes'), { [dataAlvo]: payload }, { merge: true });
@@ -7209,7 +7248,8 @@ if (formEditExcecaoAgenda) {
             const payload = {
                 indisponivel: !!estaFechado,
                 horarios: estaFechado ? "" : horariosTexto,
-                mensagem: estaFechado ? mensagemTexto : ""
+                mensagem: estaFechado ? mensagemTexto : "",
+                categorias: lerCategoriasExcecao('edit-exc-categorias')
             };
 
             const docRef = doc(db, 'config', 'agenda_excecoes');
@@ -12561,49 +12601,74 @@ window.renomearMarcaGasto = async function(idx, novoNomeBruto) {
 
 
 // =====================================================================
-// TEMAS DO SITE (2026-10, revisado)
-// CORREÇÃO do "Erro ao salvar o tema": as 4 imagens iam todas para o mesmo
-// documento e passavam do limite de 1 MB do Firestore. Agora:
-//  - a lista de temas fica em config/temas_lista (só cores e referências);
-//  - cada imagem fica no seu próprio documento config/tema_img_<id>
-//    (ou no Firebase Storage, quando ele estiver liberado);
-//  - as imagens mantêm a transparência (PNG) quando o arquivo original tem.
-// "Aplicar" copia o tema para config/tema, que os dois sites leem ao abrir.
+// TEMAS DO SITE (2026-10-15, v3)
+//  - Lista em config/temas_lista; imagens em config/tema_img_* (limite de 1 MB).
+//  - O tema "Padrão" é a base dos outros: campo vazio = segue o Padrão. Se o
+//    Padrão mudar, os temas que seguem ele mudam junto.
+//  - "padrão" só aparece quando a cor é igual à do Padrão; todo campo tem
+//    "Retomar padrão".
+//  - Seletor de cor com as cores da marca, cores salvas (config/paleta_cores),
+//    conta-gotas, código e degradê (só em fundos).
+//  - "Prévia" abre o site com o tema numa janela, antes de aplicar.
 // =====================================================================
-const TEMA_PADRAO_BASE = { nome: 'Padrão (claro)', bg: '#F4E6CB', card: '#FFF5EB', txt: '#2C2C2C', acc: '#E09F41', logoPrincipal: '', imgTopo: '', imgRodape: '', logoRodape: '' };
+const CORES_MARCA = ['#FFF5EB', '#1D2814', '#46493A', '#F4E6CB', '#7FB1C8', '#ED704F', '#399466', '#E09F41'];
+// [campo, rótulo, cor de hoje no site, seção, tipo] — tipo 'fundo' aceita degradê
+const CAMPOS_COR_TEMA = [
+    ['acc', 'Cor de destaque', '#E09F41', 'geral', 'solida'],
+    ['txt', 'Textos', '#2C2C2C', 'geral', 'solida'],
+    ['card', 'Fundo de caixas e menus', '#FFF5EB', 'geral', 'solida'],
+    ['bg', 'Fundo da página', '#F4E6CB', 'inicio', 'fundo'],
+    ['corMenuLateral', 'Fundo do menu lateral', '#FFF5EB', 'inicio', 'fundo'],
+    ['corIconesBotoes', 'Ícones dos botões', '#1D2814', 'inicio', 'solida'],
+    ['corBotoes', 'Fundo dos botões', '#FFF5EB', 'inicio', 'fundo'],
+    ['corTextoBotoes', 'Texto principal dos botões', '#1D2814', 'inicio', 'solida'],
+    ['corLegendaBotoes', 'Texto de legenda dos botões', '#46493A', 'inicio', 'solida'],
+    ['bgCardapio', 'Fundo da página', '#F4E6CB', 'cardapio', 'fundo'],
+    ['corTituloCategorias', 'Título das categorias', '#E09F41', 'cardapio', 'solida'],
+    ['corBotoesCategorias', 'Botões das categorias', '#FFFFFF', 'cardapio', 'fundo'],
+    ['corTextoCategorias', 'Texto dos botões das categorias', '#1D2814', 'cardapio', 'solida'],
+    ['corFundoItens', 'Fundo da tabela de itens', '#FFF5EB', 'cardapio', 'fundo'],
+    ['corTituloItens', 'Nome dos itens', '#1D2814', 'cardapio', 'solida'],
+    ['corDescricoes', 'Descrições dos itens', '#46493A', 'cardapio', 'solida'],
+    ['corResumoPedido', 'Barra do resumo do pedido', '#1D2814', 'cardapio', 'fundo'],
+    ['corFundoResumo', 'Fundo do resumo', '#FFF5EB', 'cardapio', 'fundo'],
+    ['corBotoesResumo', 'Botões do resumo', '#E09F41', 'cardapio', 'fundo'],
+    ['corFundoInfoPedido', 'Fundo de "Informações do pedido"', '#FFF5EB', 'cardapio', 'fundo'],
+    ['corBotoesInfoPedido', 'Botão de "Informações do pedido"', '#E09F41', 'cardapio', 'fundo']
+];
+const CHAVES_COR_TEMA = CAMPOS_COR_TEMA.map(c => c[0]);
+const CORES_BASE_TEMA = ['bg', 'card', 'txt', 'acc'];
+const SITE_PADRAO_TEMA = Object.fromEntries(CAMPOS_COR_TEMA.map(c => [c[0], c[2]]));
+// [campo, rótulo, ajuda, seção, largura ideal, altura ideal]
 const CAMPOS_IMG_TEMA = [
-    ['imgTopo', 'Faixa do topo', 'Cabeçalho dos dois sites', 'geral'],
-    ['imgRodape', 'Faixa do rodapé', 'Rodapé dos dois sites', 'geral'],
-    ['logoRodape', 'Logo do rodapé', 'Logo pequena do rodapé (celular)', 'geral'],
-    ['logoPrincipal', 'Logo principal', 'Logo grande da página inicial', 'inicio'],
-    ['logoMenu', 'Logo do menu lateral', 'Em branco = usa a logo principal', 'inicio']
+    ['imgTopo', 'Faixa do topo', 'Cabeçalho dos dois sites. Ideal: 1376 × 196 px.', 'geral', 1376, 196],
+    ['imgRodape', 'Faixa do rodapé', 'Rodapé dos dois sites. Ideal: 1376 × 196 px.', 'geral', 1376, 196],
+    ['logoRodape', 'Logo do rodapé', 'Logo pequena do rodapé (celular). Ideal: 800 × 471 px, PNG com fundo transparente.', 'geral', 800, 471],
+    ['logoPrincipal', 'Logo principal', 'Logo grande da página inicial. Ideal: 800 × 471 px, PNG com fundo transparente.', 'inicio', 800, 471],
+    ['logoMenu', 'Logo do menu lateral', 'Em branco = usa a logo principal. Ideal: 800 × 471 px, PNG com fundo transparente.', 'inicio', 800, 471]
 ];
-// Cores opcionais (2026-10-15): em branco = o site mantém a cor de hoje.
-// [campo, rótulo, cor padrão de hoje, seção]
-const CORES_OPCIONAIS_TEMA = [
-    ['corMenuLateral', 'Fundo do menu lateral', '#FFF5EB', 'inicio'],
-    ['corIconesBotoes', 'Ícones dos botões', '#1D2814', 'inicio'],
-    ['corBotoes', 'Fundo dos botões', '#FFF5EB', 'inicio'],
-    ['corTextoBotoes', 'Texto principal dos botões', '#1D2814', 'inicio'],
-    ['corLegendaBotoes', 'Texto de legenda dos botões', '#46493A', 'inicio'],
-    ['bgCardapio', 'Fundo da página', '#F4E6CB', 'cardapio'],
-    ['corTituloCategorias', 'Título das categorias', '#E09F41', 'cardapio'],
-    ['corBotoesCategorias', 'Botões das categorias', '#FFFFFF', 'cardapio'],
-    ['corTextoCategorias', 'Texto dos botões das categorias', '#1D2814', 'cardapio'],
-    ['corFundoItens', 'Fundo da tabela de itens', '#FFF5EB', 'cardapio'],
-    ['corTituloItens', 'Nome dos itens', '#1D2814', 'cardapio'],
-    ['corDescricoes', 'Descrições dos itens', '#46493A', 'cardapio'],
-    ['corResumoPedido', 'Barra do resumo do pedido', '#1D2814', 'cardapio'],
-    ['corFundoResumo', 'Fundo do resumo', '#FFF5EB', 'cardapio'],
-    ['corBotoesResumo', 'Botões do resumo', '#E09F41', 'cardapio'],
-    ['corFundoInfoPedido', 'Fundo de "Informações do pedido"', '#FFF5EB', 'cardapio'],
-    ['corBotoesInfoPedido', 'Botão de "Informações do pedido"', '#E09F41', 'cardapio']
-];
-const CHAVES_COR_OPC_TEMA = CORES_OPCIONAIS_TEMA.map(c => c[0]);
 const CHAVES_IMG_TEMA = CAMPOS_IMG_TEMA.map(c => c[0]);
+const TEMA_PADRAO_BASE = { nome: 'Padrão (claro)' };
 let temasLista = [];
 let temaAtivoId = '';
 const cacheImagensTema = new Map();
+
+const normCor = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+function getTemaPadrao() { return temasLista.find(t => t.id === 'padrao') || { id: 'padrao' }; }
+// Valor que o campo tem "por padrão" num tema: no Padrão, a cor de hoje do site;
+// nos outros, o valor do tema Padrão.
+function basePadraoCampo(temaId, campo) {
+    if (temaId === 'padrao') return SITE_PADRAO_TEMA[campo] || '';
+    const p = getTemaPadrao();
+    return p[campo] || SITE_PADRAO_TEMA[campo] || '';
+}
+function valorEfetivoTema(t, campo) {
+    return (t && t[campo]) || basePadraoCampo(t?.id, campo);
+}
+function imagemEfetivaTema(t, campo) {
+    if (t && t[campo]) return t[campo];
+    return t?.id === 'padrao' ? '' : (getTemaPadrao()[campo] || '');
+}
 
 async function resolverImagemTemaAdmin(valor) {
     const v = String(valor || '');
@@ -12624,12 +12689,28 @@ function gerarIdTema() {
 
 async function salvarListaTemas() {
     const lista = temasLista.map(t => {
-        const limpo = { id: t.id, nome: t.nome || 'Tema', bg: t.bg, card: t.card, txt: t.txt, acc: t.acc, ordem: t.ordem || 0 };
+        const limpo = { id: t.id, nome: t.nome || 'Tema', ordem: t.ordem || 0 };
+        CHAVES_COR_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         CHAVES_IMG_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
-        CHAVES_COR_OPC_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         return limpo;
     });
     await setDoc(doc(db, 'config', 'temas_lista'), { temas: lista, atualizadoEm: Date.now() });
+}
+
+// O que vai para config/tema (o que os sites leem): tudo já resolvido.
+function dadosPublicosTema(t) {
+    const out = { nome: t.nome || '' };
+    CHAVES_COR_TEMA.forEach(k => {
+        const v = valorEfetivoTema(t, k);
+        // Cores extras iguais às de hoje não precisam virar regra no site.
+        out[k] = (!CORES_BASE_TEMA.includes(k) && normCor(v) === normCor(SITE_PADRAO_TEMA[k])) ? '' : v;
+    });
+    CHAVES_IMG_TEMA.forEach(k => { out[k] = imagemEfetivaTema(t, k); });
+    return out;
+}
+
+async function publicarTemaNoSite(t) {
+    await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(t), temaAtivoId: t.id, aplicadoEm: Date.now() });
 }
 
 async function carregarTemas() {
@@ -12638,19 +12719,16 @@ async function carregarTemas() {
         const atual = ativo.exists() ? ativo.data() : {};
         temaAtivoId = atual.temaAtivoId || '';
         temasLista = listaSnap.exists() && Array.isArray(listaSnap.data().temas) ? listaSnap.data().temas.slice() : [];
-
         let mudou = false;
         if (!listaSnap.exists()) {
-            // Traz os temas salvos na versão anterior (coleção "temas"), se houver.
             try {
                 const antigos = await getDocs(collection(db, 'temas'));
                 antigos.forEach(d => temasLista.push({ id: d.id, ...d.data() }));
                 if (temasLista.length) mudou = true;
-            } catch (e) { /* coleção bloqueada pelas regras: ignora */ }
+            } catch (e) {}
         }
         if (!temasLista.some(t => t.id === 'padrao')) {
-            // Primeiro uso: cria o tema Padrão com as cores que já estão no site hoje.
-            temasLista.unshift({ ...TEMA_PADRAO_BASE, id: 'padrao', bg: atual.bg || TEMA_PADRAO_BASE.bg, card: atual.card || TEMA_PADRAO_BASE.card, txt: atual.txt || TEMA_PADRAO_BASE.txt, acc: atual.acc || TEMA_PADRAO_BASE.acc, ordem: 0 });
+            temasLista.unshift({ id: 'padrao', nome: TEMA_PADRAO_BASE.nome, ordem: 0, bg: atual.bg || '', card: atual.card || '', txt: atual.txt || '', acc: atual.acc || '' });
             mudou = true;
         }
         if (!temaAtivoId) temaAtivoId = 'padrao';
@@ -12670,47 +12748,39 @@ window.renderTemas = function() {
     if (!box) return;
     box.innerHTML = temasLista.map(t => {
         const ativo = t.id === temaAtivoId;
+        const bg = valorEfetivoTema(t, 'bg'), card = valorEfetivoTema(t, 'card'), txt = valorEfetivoTema(t, 'txt'), acc = valorEfetivoTema(t, 'acc');
         return `<div class="tema-card ${ativo ? 'ativo' : ''}">
-            <div class="tema-card-preview" data-tema-topo="${t.id}" style="background:${t.bg}; background-size:cover; background-position:center;">
-                <div class="tema-card-box" style="background:${t.card}; color:${t.txt};"><span data-tema-logo="${t.id}">Prévia</span></div>
-                <span class="tema-card-acc" style="background:${t.acc};"></span>
+            <div class="tema-card-preview" data-tema-topo="${t.id}" style="background:${bg}; background-size:cover; background-position:center;">
+                <div class="tema-card-box" style="background:${card}; color:${txt};"><span data-tema-logo="${t.id}">${escapeHtmlPedido(t.nome || 'Tema')}</span></div>
+                <span class="tema-card-acc" style="background:${acc};"></span>
             </div>
             <div class="tema-card-body">
                 <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
                 <div class="tema-card-acoes">
                     <button type="button" class="btn btn-primary" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i> Aplicar</button>
-                    <button type="button" class="btn btn-outline" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
-                    <button type="button" class="btn btn-outline" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
-                    ${t.id !== 'padrao' ? `<button type="button" class="btn btn-danger" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
+                    <button type="button" class="btn-action" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
+                    <button type="button" class="btn-action edit" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
+                    <button type="button" class="btn-action copy" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
+                    ${t.id !== 'padrao' ? `<button type="button" class="btn-action del" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
                 </div>
             </div>
         </div>`;
     }).join('');
-    // Prévias das imagens (carregam depois, sem travar a lista).
     temasLista.forEach(async t => {
-        if (t.imgTopo) {
-            const src = await resolverImagemTemaAdmin(t.imgTopo);
+        const topo = imagemEfetivaTema(t, 'imgTopo');
+        if (topo) {
+            const src = await resolverImagemTemaAdmin(topo);
             const el = box.querySelector(`[data-tema-topo="${t.id}"]`);
             if (el && src) el.style.backgroundImage = `url('${src}')`;
         }
-        if (t.logoPrincipal) {
-            const src = await resolverImagemTemaAdmin(t.logoPrincipal);
+        const logo = imagemEfetivaTema(t, 'logoPrincipal');
+        if (logo) {
+            const src = await resolverImagemTemaAdmin(logo);
             const el = box.querySelector(`[data-tema-logo="${t.id}"]`);
             if (el && src) el.outerHTML = `<img src="${src}" style="max-height:40px; max-width:100%;">`;
         }
     });
 };
-
-function dadosPublicosTema(t) {
-    const out = { nome: t.nome || '', bg: t.bg, card: t.card, txt: t.txt, acc: t.acc };
-    CHAVES_IMG_TEMA.forEach(k => { out[k] = t[k] || ''; });
-    CHAVES_COR_OPC_TEMA.forEach(k => { out[k] = t[k] || ''; });
-    return out;
-}
-
-async function publicarTemaNoSite(t) {
-    await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(t), temaAtivoId: t.id, aplicadoEm: Date.now() });
-}
 
 window.aplicarTema = function(id) {
     const t = temasLista.find(x => x.id === id);
@@ -12731,7 +12801,10 @@ window.duplicarTema = async function(id) {
     const t = temasLista.find(x => x.id === id);
     if (!t) return;
     try {
-        temasLista.push({ ...t, id: gerarIdTema(), nome: `${t.nome} (cópia)`, ordem: Date.now() });
+        const copia = { ...t, id: gerarIdTema(), nome: `${t.nome} (cópia)`, ordem: Date.now() };
+        // A cópia do Padrão começa seguindo o Padrão (todos os campos vazios).
+        if (t.id === 'padrao') { CHAVES_COR_TEMA.forEach(k => { copia[k] = ''; }); CHAVES_IMG_TEMA.forEach(k => { copia[k] = ''; }); }
+        temasLista.push(copia);
         await salvarListaTemas();
         window.showToast('Tema duplicado!');
     } catch (e) { console.error(e); customAlert(`Erro ao duplicar o tema (${e?.code || e?.message || 'erro'}).`, 'Erro'); }
@@ -12760,8 +12833,60 @@ window.excluirTema = function(id) {
     });
 };
 
+// ---------- Editor ----------
+function htmlCampoCorTema(campo) {
+    const ed = window.__temaEdicao;
+    const def = CAMPOS_COR_TEMA.find(c => c[0] === campo);
+    const valor = ed.cores[campo];
+    const igual = normCor(valor) === normCor(basePadraoCampo(ed.id, campo));
+    return `<div class="tema-cor-campo" data-campo="${campo}">
+        <div class="tema-campo-topo"><label>${def[1]}</label>${igual ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
+        <div class="tema-cor-linha">
+            <button type="button" class="tema-swatch" onclick="window.abrirSeletorCor('${campo}', this)">
+                <span class="tema-swatch-cor" style="background:${valor};"></span>
+                <span class="tema-swatch-valor">${/gradient/i.test(valor) ? 'Degradê' : escapeHtmlPedido(String(valor).toUpperCase())}</span>
+            </button>
+            ${igual ? '' : `<button type="button" class="tema-cor-reset" onclick="window.retomarPadraoCor('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>`}
+        </div>
+    </div>`;
+}
+function atualizarCampoCorTema(campo) {
+    const el = document.querySelector(`#modal-editor-tema .tema-cor-campo[data-campo="${campo}"]`);
+    if (el) el.outerHTML = htmlCampoCorTema(campo);
+}
+window.retomarPadraoCor = function(campo) {
+    const ed = window.__temaEdicao;
+    ed.cores[campo] = basePadraoCampo(ed.id, campo);
+    atualizarCampoCorTema(campo);
+};
+
+function htmlCampoImgTema([campo, label, ajuda]) {
+    const ed = window.__temaEdicao;
+    const herdada = !ed.imgs[campo] && ed.id !== 'padrao' && getTemaPadrao()[campo];
+    const temPropria = !!ed.imgs[campo] || !!ed.arquivos[campo];
+    return `<div class="tema-img-campo" data-campo-img="${campo}">
+        <div class="tema-campo-topo"><label>${label}</label>${!temPropria ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
+        <small class="tema-campo-ajuda">${ajuda}</small>
+        <img id="tema-prev-${campo}" src="" style="display:none;">
+        <small class="tema-img-alerta" id="tema-alerta-${campo}"></small>
+        <div class="tema-img-acoes">
+            <label class="custom-file-upload"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" onchange="window.selecionarImagemTema('${campo}', this)"></label>
+            ${temPropria ? `<button type="button" class="tema-cor-reset" onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>` : ''}
+        </div>
+    </div>`;
+}
+async function mostrarPreviaImgTema(campo) {
+    const ed = window.__temaEdicao;
+    const prev = document.getElementById(`tema-prev-${campo}`);
+    if (!prev) return;
+    if (ed.arquivos[campo]) { prev.src = URL.createObjectURL(ed.arquivos[campo]); prev.style.display = ''; return; }
+    const ref = ed.imgs[campo] || (ed.id !== 'padrao' ? getTemaPadrao()[campo] : '');
+    const src = ref ? await resolverImagemTemaAdmin(ref) : '';
+    if (src) { prev.src = src; prev.style.display = ''; } else { prev.style.display = 'none'; }
+}
+
 window.abrirEditorTema = function(id = '') {
-    const t = temasLista.find(x => x.id === id) || { ...TEMA_PADRAO_BASE, nome: '' };
+    const t = temasLista.find(x => x.id === id) || { nome: '' };
     let modal = document.getElementById('modal-editor-tema');
     if (!modal) {
         modal = document.createElement('div');
@@ -12769,83 +12894,66 @@ window.abrirEditorTema = function(id = '') {
         modal.className = 'modal';
         document.body.appendChild(modal);
     }
-    window.__temaEdicao = { id, imgs: {}, arquivos: {} };
-    CHAVES_IMG_TEMA.forEach(k => { window.__temaEdicao.imgs[k] = t[k] || ''; });
-    const cor = (campo, label) => `<div class="tema-cor-campo"><label>${label}</label><input type="color" id="tema-${campo}" value="${t[campo] || TEMA_PADRAO_BASE[campo]}"></div>`;
-    const corOpc = ([campo, label, padrao]) => {
-        const definido = !!t[campo];
-        return `<div class="tema-cor-campo ${definido ? '' : 'padrao'}" data-campo="${campo}">
-            <label>${label}</label>
-            <div class="tema-cor-linha">
-                <input type="color" id="tema-c-${campo}" value="${t[campo] || padrao}" data-definido="${definido ? '1' : ''}" oninput="this.dataset.definido='1'; this.closest('.tema-cor-campo').classList.remove('padrao');">
-                <button type="button" class="tema-cor-reset" title="Voltar para a cor de hoje" onclick="window.resetCorTema('${campo}', '${padrao}')">padrão</button>
-            </div>
-        </div>`;
-    };
-    const img = ([campo, label, ajuda]) => `
-        <div class="tema-img-campo">
-            <label>${label}</label><small style="color:#999;">${ajuda}</small>
-            <img id="tema-prev-${campo}" src="" style="display:none;">
-            <div style="display:flex; gap:6px;">
-                <label class="custom-file-upload" style="flex:1; padding:6px 10px; font-size:0.8rem;"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" onchange="window.selecionarImagemTema('${campo}', this)"></label>
-                <button type="button" class="btn btn-outline" style="padding:6px 10px;" title="Usar padrão" onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i></button>
-            </div>
-        </div>`;
-    const secao = (titulo, ajuda, html) => `<div class="tema-secao"><h4 class="font-display tema-secao-titulo">${titulo}</h4>${ajuda ? `<small class="tema-secao-ajuda">${ajuda}</small>` : ''}${html}</div>`;
-    const imgsDe = (sec) => CAMPOS_IMG_TEMA.filter(c => c[3] === sec).map(img).join('');
-    const coresDe = (sec) => CORES_OPCIONAIS_TEMA.filter(c => c[3] === sec).map(corOpc).join('');
+    const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {} };
+    CHAVES_IMG_TEMA.forEach(k => { ed.imgs[k] = t[k] || ''; });
+    CHAVES_COR_TEMA.forEach(k => { ed.cores[k] = t[k] || basePadraoCampo(ed.id, k); });
+    const secao = (titulo, ajuda, html) => `<div class="tema-secao"><h4 class="font-display tema-secao-titulo">${titulo}</h4>${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda}</small>` : ''}${html}</div>`;
+    const cores = sec => `<div class="form-grid tema-grid">${CAMPOS_COR_TEMA.filter(c => c[3] === sec).map(c => htmlCampoCorTema(c[0])).join('')}</div>`;
+    const imgs = sec => `<div class="form-grid tema-grid">${CAMPOS_IMG_TEMA.filter(c => c[3] === sec).map(htmlCampoImgTema).join('')}</div>`;
     modal.innerHTML = `
-        <div class="modal-content" style="max-width:720px; border:2px solid var(--favu-rust);">
-            <div class="modal-header"><h3 style="color:var(--favu-rust);">${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
+        <div class="modal-content" style="max-width:760px;">
+            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
             <div class="modal-body">
-                <div style="margin-bottom:15px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026"></div>
-                ${secao('Geral', 'Vale para a página inicial e para o cardápio. Imagens em branco = imagem padrão.', `
-                    <div class="form-grid">${cor('acc', 'Cor de destaque')}${cor('txt', 'Textos')}${cor('card', 'Fundo de caixas e menus')}</div>
-                    <div class="form-grid">${imgsDe('geral')}</div>`)}
-                ${secao('Página inicial', 'Cores com "padrão" mantêm a cor de hoje.', `
-                    <div class="form-grid">${cor('bg', 'Fundo da página')}${coresDe('inicio')}</div>
-                    <div class="form-grid">${imgsDe('inicio')}</div>`)}
-                ${secao('Cardápio', 'Cores com "padrão" mantêm a cor de hoje. O menu lateral do cardápio usa as mesmas cores e logo da página inicial.', `
-                    <div class="form-grid">${coresDe('cardapio')}</div>`)}
-                <div style="display:flex; gap:10px; margin-top:20px;">
-                    <button type="button" class="btn btn-outline" style="flex:1;" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
-                    <button type="button" class="btn btn-primary" style="flex:2;" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
+                <div style="margin-bottom:15px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026" ${id === 'padrao' ? 'readonly' : ''}></div>
+                ${secao('Geral', 'Vale para a página inicial e para o cardápio. Imagens em branco = imagem padrão.', cores('geral') + imgs('geral'))}
+                ${secao('Página inicial', 'Cores com "padrão" mantêm a cor de hoje.', cores('inicio') + imgs('inicio'))}
+                ${secao('Cardápio', 'Cores com "padrão" mantêm a cor de hoje. O menu lateral do cardápio usa as mesmas cores e logo da página inicial.', cores('cardapio'))}
+                <div class="tema-editor-acoes">
+                    <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
                 </div>
             </div>
         </div>`;
     window.openModal('modal-editor-tema');
-    CHAVES_IMG_TEMA.forEach(async campo => {
-        const src = await resolverImagemTemaAdmin(window.__temaEdicao.imgs[campo]);
-        const prev = document.getElementById(`tema-prev-${campo}`);
-        if (prev && src && !window.__temaEdicao.arquivos[campo]) { prev.src = src; prev.style.display = ''; }
-    });
-};
-
-window.resetCorTema = function(campo, padrao) {
-    const inp = document.getElementById(`tema-c-${campo}`);
-    if (!inp) return;
-    inp.value = padrao;
-    inp.dataset.definido = '';
-    inp.closest('.tema-cor-campo')?.classList.add('padrao');
+    CHAVES_IMG_TEMA.forEach(mostrarPreviaImgTema);
 };
 
 window.selecionarImagemTema = function(campo, input) {
     const file = input.files && input.files[0];
     if (!file) return;
-    window.__temaEdicao.arquivos[campo] = file;
-    const prev = document.getElementById(`tema-prev-${campo}`);
-    if (prev) { prev.src = URL.createObjectURL(file); prev.style.display = ''; }
+    const ed = window.__temaEdicao;
+    ed.arquivos[campo] = file;
+    const def = CAMPOS_IMG_TEMA.find(c => c[0] === campo);
+    const el = document.querySelector(`#modal-editor-tema [data-campo-img="${campo}"]`);
+    if (el) el.outerHTML = htmlCampoImgTema(def);
+    mostrarPreviaImgTema(campo);
+    // Confere as medidas: avisa se a imagem pode ficar esticada, cortada ou pequena demais.
+    const img = new Image();
+    img.onload = () => {
+        const [, , , , w, h] = def;
+        const alerta = document.getElementById(`tema-alerta-${campo}`);
+        if (!alerta) return;
+        const prop = (img.width / img.height) / (w / h);
+        const msgs = [];
+        if (prop < 0.8 || prop > 1.25) msgs.push('o formato é diferente do ideal e pode ficar esticado ou cortado');
+        if (img.width < w * 0.6) msgs.push('a imagem é pequena e pode ficar sem nitidez');
+        alerta.textContent = msgs.length ? `Atenção: ${img.width} × ${img.height} px — ${msgs.join('; ')}. Ideal: ${w} × ${h} px.` : `${img.width} × ${img.height} px — medidas adequadas.`;
+        alerta.classList.toggle('ok', !msgs.length);
+        URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(file);
 };
 
 window.limparImagemTema = function(campo) {
-    window.__temaEdicao.imgs[campo] = '';
-    delete window.__temaEdicao.arquivos[campo];
-    const prev = document.getElementById(`tema-prev-${campo}`);
-    if (prev) { prev.src = ''; prev.style.display = 'none'; }
+    const ed = window.__temaEdicao;
+    ed.imgs[campo] = '';
+    delete ed.arquivos[campo];
+    const def = CAMPOS_IMG_TEMA.find(c => c[0] === campo);
+    const el = document.querySelector(`#modal-editor-tema [data-campo-img="${campo}"]`);
+    if (el) el.outerHTML = htmlCampoImgTema(def);
+    mostrarPreviaImgTema(campo);
 };
 
-// Prepara a imagem do tema: reduz para no máximo 1600px e mantém PNG (com transparência)
-// quando o original é PNG/WEBP/GIF/SVG. Vai diminuindo até caber com folga em 1 documento.
 function prepararImagemTema(file) {
     return new Promise((resolve, reject) => {
         const leitor = new FileReader();
@@ -12881,7 +12989,6 @@ function prepararImagemTema(file) {
 
 async function enviarImagemTema(file) {
     const dataUrl = await prepararImagemTema(file);
-    // 1) Firebase Storage, se estiver liberado (mais leve para o site).
     if (!window.__storageIndisponivel) {
         try {
             const blob = await (await fetch(dataUrl)).blob();
@@ -12895,7 +13002,6 @@ async function enviarImagemTema(file) {
             console.warn('Storage indisponível para a imagem do tema, salvando no banco:', e);
         }
     }
-    // 2) Documento próprio no Firestore (cada imagem no seu documento).
     const id = 'tema_img_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     await setDoc(doc(db, 'config', id), { data: dataUrl, criadoEm: Date.now() });
     cacheImagensTema.set(id, dataUrl);
@@ -12912,29 +13018,20 @@ window.salvarTema = async function() {
     try {
         const anterior = temasLista.find(x => x.id === ed.id) || {};
         const imgs = { ...ed.imgs };
-        for (const [campo, file] of Object.entries(ed.arquivos)) {
-            imgs[campo] = await enviarImagemTema(file);
-        }
+        for (const [campo, file] of Object.entries(ed.arquivos)) imgs[campo] = await enviarImagemTema(file);
         etapa = 'tema';
-        const dados = {
-            id: ed.id || gerarIdTema(),
-            nome,
-            bg: document.getElementById('tema-bg').value,
-            card: document.getElementById('tema-card').value,
-            txt: document.getElementById('tema-txt').value,
-            acc: document.getElementById('tema-acc').value,
-            ordem: anterior.ordem || Date.now(),
-            ...imgs
-        };
-        CHAVES_COR_OPC_TEMA.forEach(k => {
-            const inp = document.getElementById(`tema-c-${k}`);
-            dados[k] = inp && inp.dataset.definido === '1' ? inp.value : '';
+        const dados = { id: ed.id || gerarIdTema(), nome, ordem: anterior.ordem || Date.now(), ...imgs };
+        // Cor igual ao padrão é gravada vazia: assim continua seguindo o Padrão.
+        CHAVES_COR_TEMA.forEach(k => {
+            const v = ed.cores[k];
+            dados[k] = normCor(v) === normCor(basePadraoCampo(dados.id, k)) ? '' : v;
         });
         const idx = temasLista.findIndex(x => x.id === dados.id);
         if (idx > -1) temasLista[idx] = dados; else temasLista.push(dados);
         await salvarListaTemas();
-        // Se o tema editado é o que está no ar, atualiza o site também.
-        if (dados.id === temaAtivoId) { etapa = 'site'; await publicarTemaNoSite(dados); }
+        // O tema no ar é republicado (inclusive quando o Padrão mudou e ele segue o Padrão).
+        const noAr = temasLista.find(x => x.id === temaAtivoId);
+        if (noAr && (noAr.id === dados.id || dados.id === 'padrao')) { etapa = 'site'; await publicarTemaNoSite(noAr); }
         await apagarImagensSemUsoTema(CHAVES_IMG_TEMA.map(k => anterior[k]));
         window.closeModal('modal-editor-tema');
         window.showToast('Tema salvo!');
@@ -12947,6 +13044,167 @@ window.salvarTema = async function() {
         customAlert(`Erro ao salvar o tema (${etapa === 'imagens' ? 'enviando as imagens' : etapa === 'site' ? 'publicando no site' : 'gravando o tema'}): ${motivo}`, 'Erro');
     }
     if (btn) { btn.disabled = false; btn.innerHTML = 'Salvar tema'; }
+};
+
+// ---------- Seletor de cor ----------
+window.__paletaCores = null;
+async function carregarPaletaCores() {
+    if (window.__paletaCores) return window.__paletaCores;
+    try {
+        const snap = await getDoc(doc(db, 'config', 'paleta_cores'));
+        window.__paletaCores = snap.exists() && Array.isArray(snap.data().cores) ? snap.data().cores : [];
+    } catch (e) { window.__paletaCores = []; }
+    return window.__paletaCores;
+}
+async function salvarNaPaleta(valor) {
+    const lista = await carregarPaletaCores();
+    const v = String(valor || '').trim();
+    if (!v || CORES_MARCA.some(c => normCor(c) === normCor(v)) || lista.some(c => normCor(c) === normCor(v))) return;
+    lista.push(v);
+    try { await setDoc(doc(db, 'config', 'paleta_cores'), { cores: lista, atualizadoEm: Date.now() }); } catch (e) { console.warn(e); }
+}
+window.removerCorPaleta = async function(i) {
+    const lista = await carregarPaletaCores();
+    lista.splice(i, 1);
+    try { await setDoc(doc(db, 'config', 'paleta_cores'), { cores: lista, atualizadoEm: Date.now() }); } catch (e) {}
+    window.abrirSeletorCor(window.__seletorCorCampo, window.__seletorCorAncora);
+};
+function fecharSeletorCor() {
+    document.getElementById('seletor-cor-pop')?.remove();
+    document.removeEventListener('mousedown', fecharSeletorFora, true);
+}
+function fecharSeletorFora(e) {
+    const pop = document.getElementById('seletor-cor-pop');
+    if (pop && !pop.contains(e.target) && !e.target.closest('.tema-swatch')) fecharSeletorCor();
+}
+window.fecharSeletorCor = fecharSeletorCor;
+window.usarCorSeletor = function(valor, salvar = false) {
+    const campo = window.__seletorCorCampo;
+    if (!campo || !valor) return;
+    window.__temaEdicao.cores[campo] = valor;
+    atualizarCampoCorTema(campo);
+    if (salvar) salvarNaPaleta(valor);
+    fecharSeletorCor();
+};
+window.usarCorDigitada = function() {
+    const hex = String(document.getElementById('sc-hex')?.value || '').trim();
+    const ok = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex) || /^(rgb|hsl)a?\(/i.test(hex);
+    if (!ok) return window.showToast('Código de cor inválido. Ex.: #E09F41', true);
+    window.usarCorSeletor(hex, true);
+};
+window.contaGotasSeletor = async function() {
+    if (!window.EyeDropper) return window.showToast('Seu navegador não tem conta-gotas. Use o quadrado de cor ao lado.', true);
+    try {
+        const r = await new window.EyeDropper().open();
+        const inp = document.getElementById('sc-hex'); if (inp) inp.value = r.sRGBHex.toUpperCase();
+        const nat = document.getElementById('sc-nativo'); if (nat) nat.value = r.sRGBHex;
+    } catch (e) {}
+};
+window.atualizarDegradeSeletor = function() {
+    const c1 = document.getElementById('sc-g1')?.value, c2 = document.getElementById('sc-g2')?.value, ang = document.getElementById('sc-gang')?.value || '135deg';
+    const prev = document.getElementById('sc-gprev');
+    if (prev) prev.style.background = `linear-gradient(${ang}, ${c1}, ${c2})`;
+};
+window.usarDegradeSeletor = function() {
+    const c1 = document.getElementById('sc-g1')?.value, c2 = document.getElementById('sc-g2')?.value, ang = document.getElementById('sc-gang')?.value || '135deg';
+    window.usarCorSeletor(`linear-gradient(${ang}, ${String(c1).toUpperCase()}, ${String(c2).toUpperCase()})`, true);
+};
+window.abrirSeletorCor = async function(campo, ancora) {
+    fecharSeletorCor();
+    window.__seletorCorCampo = campo;
+    window.__seletorCorAncora = ancora;
+    const def = CAMPOS_COR_TEMA.find(c => c[0] === campo);
+    const aceitaDegrade = def && def[4] === 'fundo';
+    const atual = window.__temaEdicao.cores[campo] || '#FFFFFF';
+    const hexAtual = /^#/.test(atual) ? atual : '#E09F41';
+    const salvas = (await carregarPaletaCores()).filter(c => aceitaDegrade || !/gradient/i.test(c));
+    const sw = (v, i, removivel) => `<span class="sc-sw-wrap"><button type="button" class="sc-sw ${normCor(v) === normCor(atual) ? 'sel' : ''}" title="${escapeHtmlPedido(v)}" style="background:${v};" onclick="window.usarCorSeletor('${v.replace(/'/g, "\\'")}')"></button>${removivel ? `<button type="button" class="sc-sw-x" title="Tirar da paleta" onclick="window.removerCorPaleta(${i})">×</button>` : ''}</span>`;
+    const pop = document.createElement('div');
+    pop.id = 'seletor-cor-pop';
+    pop.innerHTML = `
+        <div class="sc-titulo">Cores da marca</div>
+        <div class="sc-grade">${CORES_MARCA.map(v => sw(v)).join('')}</div>
+        <div class="sc-titulo">Cores salvas</div>
+        <div class="sc-grade">${salvas.length ? salvas.map(v => sw(v, (window.__paletaCores || []).indexOf(v), true)).join('') : '<small class="sc-vazio">Nenhuma ainda. As cores novas que você usar ficam aqui.</small>'}</div>
+        <div class="sc-titulo">Nova cor</div>
+        <div class="sc-linha">
+            <input type="color" id="sc-nativo" value="${hexAtual}" oninput="document.getElementById('sc-hex').value=this.value.toUpperCase()">
+            <input type="text" id="sc-hex" value="${hexAtual.toUpperCase()}" placeholder="#RRGGBB" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.usarCorDigitada();}">
+            <button type="button" class="sc-btn-icone" title="Conta-gotas" onclick="window.contaGotasSeletor()"><i class="fas fa-eye-dropper"></i></button>
+            <button type="button" class="btn btn-primary sc-usar" onclick="window.usarCorDigitada()">Usar</button>
+        </div>
+        ${aceitaDegrade ? `
+        <div class="sc-titulo">Degradê</div>
+        <div class="sc-linha">
+            <input type="color" id="sc-g1" value="#F4E6CB" oninput="window.atualizarDegradeSeletor()">
+            <input type="color" id="sc-g2" value="#E09F41" oninput="window.atualizarDegradeSeletor()">
+            <select id="sc-gang" onchange="window.atualizarDegradeSeletor()"><option value="135deg">↘</option><option value="90deg">→</option><option value="180deg">↓</option><option value="45deg">↗</option></select>
+            <span id="sc-gprev" class="sc-gprev" style="background:linear-gradient(135deg, #F4E6CB, #E09F41);"></span>
+            <button type="button" class="btn btn-primary sc-usar" onclick="window.usarDegradeSeletor()">Usar</button>
+        </div>` : ''}`;
+    document.body.appendChild(pop);
+    const r = ancora.getBoundingClientRect();
+    const larg = Math.min(330, window.innerWidth - 20);
+    pop.style.width = larg + 'px';
+    let left = Math.min(Math.max(10, r.left), window.innerWidth - larg - 10);
+    let top = r.bottom + 6;
+    const alt = pop.offsetHeight;
+    if (top + alt > window.innerHeight - 10) top = Math.max(10, r.top - alt - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    setTimeout(() => document.addEventListener('mousedown', fecharSeletorFora, true), 0);
+};
+
+// ---------- Prévia ----------
+const SITE_CLIENTES_PADRAO = 'https://favucozinha.github.io/favu/';
+function urlSiteClientes() {
+    try { return localStorage.getItem('favu_site_url') || SITE_CLIENTES_PADRAO; } catch (e) { return SITE_CLIENTES_PADRAO; }
+}
+window.abrirPreviaTema = function(id) {
+    const t = temasLista.find(x => x.id === id);
+    if (!t) return;
+    let modal = document.getElementById('modal-previa-tema');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-previa-tema';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    window.__previa = { id, pagina: 'index.html', aparelho: 'computador' };
+    modal.innerHTML = `
+        <div class="modal-content previa-tema-content">
+            <div class="modal-header"><h3>Prévia: ${escapeHtmlPedido(t.nome || 'Tema')}</h3><button class="close-modal" onclick="window.closeModal('modal-previa-tema')">&times;</button></div>
+            <div class="modal-body">
+                <div class="previa-tema-barra">
+                    <div class="prod-tabs previa-abas">
+                        <button type="button" class="prod-tab-btn active" data-previa-pagina="index.html" onclick="window.trocarPreviaTema('pagina','index.html')">Página inicial</button>
+                        <button type="button" class="prod-tab-btn" data-previa-pagina="cardapio.html" onclick="window.trocarPreviaTema('pagina','cardapio.html')">Cardápio</button>
+                    </div>
+                    <div class="prod-tabs previa-abas">
+                        <button type="button" class="prod-tab-btn active" data-previa-aparelho="computador" onclick="window.trocarPreviaTema('aparelho','computador')"><i class="fas fa-desktop"></i> Computador</button>
+                        <button type="button" class="prod-tab-btn" data-previa-aparelho="celular" onclick="window.trocarPreviaTema('aparelho','celular')"><i class="fas fa-mobile-alt"></i> Celular</button>
+                    </div>
+                </div>
+                <div class="previa-tema-moldura"><iframe id="previa-tema-iframe" title="Prévia do site"></iframe></div>
+                <div class="previa-tema-url"><label>Endereço do site de clientes</label><input type="text" id="previa-tema-url" value="${escapeHtmlPedido(urlSiteClientes())}" onchange="try{localStorage.setItem('favu_site_url', this.value.trim())}catch(e){}; window.trocarPreviaTema()"></div>
+            </div>
+        </div>`;
+    window.openModal('modal-previa-tema');
+    window.trocarPreviaTema();
+};
+window.trocarPreviaTema = function(tipo, valor) {
+    const p = window.__previa;
+    if (!p) return;
+    if (tipo === 'pagina') p.pagina = valor;
+    if (tipo === 'aparelho') p.aparelho = valor;
+    document.querySelectorAll('#modal-previa-tema [data-previa-pagina]').forEach(b => b.classList.toggle('active', b.dataset.previaPagina === p.pagina));
+    document.querySelectorAll('#modal-previa-tema [data-previa-aparelho]').forEach(b => b.classList.toggle('active', b.dataset.previaAparelho === p.aparelho));
+    const base = (document.getElementById('previa-tema-url')?.value || urlSiteClientes()).trim().replace(/[^/]*\.html$/, '');
+    const url = `${base.endsWith('/') ? base : base + '/'}${p.pagina}?tema_previa=${encodeURIComponent(p.id)}&t=${Date.now()}`;
+    const iframe = document.getElementById('previa-tema-iframe');
+    const moldura = iframe?.parentElement;
+    if (moldura) moldura.classList.toggle('celular', p.aparelho === 'celular');
+    if (iframe) iframe.src = url;
 };
 
 setTimeout(() => { if (document.getElementById('lista-temas')) carregarTemas(); }, 1500);
@@ -13175,7 +13433,20 @@ function posicionarTotaisGastos() {
         } else if (!body.querySelector(':scope > tr')) {
             tfoot.innerHTML = '';
         }
+        // Barra fixa no rodapé da tela, alinhada com a tabela.
+        const r = tabela.getBoundingClientRect();
+        if (r.width) {
+            tfoot.style.setProperty('left', `${r.left}px`, 'important');
+            tfoot.style.setProperty('width', `${r.width}px`, 'important');
+        }
     });
+    // Cabeçalho das colunas preso logo abaixo do topo do painel (se o topo for fixo).
+    const topo = document.querySelector('header');
+    const pane = document.getElementById('t-gastos');
+    if (topo && pane) {
+        const pos = getComputedStyle(topo).position;
+        pane.style.setProperty('--gastos-thead-top', (pos === 'fixed' || pos === 'sticky') ? `${topo.offsetHeight}px` : '0px');
+    }
 }
 window.posicionarTotaisGastos = posicionarTotaisGastos;
 
@@ -13374,3 +13645,67 @@ window.removerArquivoCarrossel = function(i) {
         if (btn) { btn.innerHTML = '<i class="fas fa-upload"></i> Adicionar ao Carrossel'; btn.disabled = false; }
     };
 })();
+
+// ---------- CUPONS: cadastro numa janela (2026-10-15) ----------
+window.abrirCadastroCupom = function() {
+    window.limparFormCupom();
+    window.openModal('modal-cadastrar-cupom');
+};
+window.fecharCadastroCupom = function() {
+    window.limparFormCupom();
+};
+(function() {
+    const limparOriginal = window.limparFormCupom;
+    window.limparFormCupom = function(...args) {
+        const r = limparOriginal.apply(this, args);
+        const m = document.getElementById('modal-cadastrar-cupom');
+        if (m && (m.classList.contains('show') || m.style.display === 'flex' || m.style.display === 'block')) window.closeModal('modal-cadastrar-cupom');
+        return r;
+    };
+})();
+
+// ---------- HORÁRIOS: datas específicas restritas a categorias (2026-10-15) ----------
+function renderCategoriasExcecao(containerId, selecionadas = []) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    const nomes = (globalCategories || []).map(c => c.nome).filter(Boolean);
+    const marcadas = new Set(selecionadas || []);
+    box.innerHTML = nomes.length ? nomes.map(n => `
+        <label class="exc-cat-opcao"><input type="checkbox" value="${escapeHtmlPedido(n)}" ${marcadas.has(n) ? 'checked' : ''}> <span>${escapeHtmlPedido(n)}</span></label>`).join('')
+        : '<small style="color:#999;">Nenhuma categoria cadastrada.</small>';
+}
+function lerCategoriasExcecao(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`)).map(i => i.value);
+}
+(function() {
+    const abrirNova = window.abrirModalNovaDataEspecifica;
+    window.abrirModalNovaDataEspecifica = function(...a) { const r = abrirNova.apply(this, a); renderCategoriasExcecao('exc-categorias', []); return r; };
+    const editar = window.editarExcecaoData;
+    window.editarExcecaoData = async function(dataString, ...a) {
+        const r = await editar.call(this, dataString, ...a);
+        renderCategoriasExcecao('edit-exc-categorias', (window.cacheExcecoesAgenda?.[dataString] || {}).categorias || []);
+        return r;
+    };
+    const copiar = window.copiarExcecaoData;
+    window.copiarExcecaoData = async function(dataString, ...a) {
+        const r = await copiar.call(this, dataString, ...a);
+        renderCategoriasExcecao('edit-exc-categorias', (window.cacheExcecoesAgenda?.[dataString] || {}).categorias || []);
+        return r;
+    };
+    // Categorias mostram os horários das datas específicas: recarrega a tabela quando elas mudam.
+    const carregar = window.carregarExcecoesLista;
+    window.carregarExcecoesLista = async function(...a) {
+        const r = await carregar.apply(this, a);
+        try { if (document.querySelector('#tbl-categorias tbody')) window.renderCatsTable?.(); } catch (e) {}
+        return r;
+    };
+})();
+// Carrega as datas específicas logo no início, para a tabela de Categorias já mostrar os horários.
+setTimeout(async () => {
+    try {
+        if (window.cacheExcecoesAgenda && Object.keys(window.cacheExcecoesAgenda).length) return;
+        const snap = await getDoc(doc(db, 'config', 'agenda_excecoes'));
+        window.cacheExcecoesAgenda = snap.exists() ? (snap.data() || {}) : {};
+        window.renderCatsTable?.();
+    } catch (e) {}
+}, 1200);
