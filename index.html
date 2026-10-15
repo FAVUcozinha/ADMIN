@@ -5840,12 +5840,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         <button class="btn btn-secondary" onclick="window.abrirBulkMove()">Etapa</button>
                         <button class="btn btn-primary" onclick="window.abrirBulkPayment()">Pagamento</button>
                         <button class="btn btn-outline" style="background-color: var(--favu-moss); border-color:var(--favu-moss); color: white;" onclick="window.abrirModalResumos()">Resumos</button>
-                        <button class="btn btn-outline" style="border-color:#999; color:#666;" onclick="window.abrirModalPedidosApagados()" title="Pedidos excluídos — dá para restaurar"><i class="fas fa-trash-restore"></i> Apagados</button>
                         <button class="btn btn-danger" onclick="window.limparSelecaoPedidos()">Limpar</button>
                     </div>
                 </div> </div> <div id="t-prods" class="tab-pane"> <div class="buttons-area">
                     <button class="btn btn-primary" onclick="window.openModal('modal-add-prod')"><i class="fas fa-plus"></i> Adicionar produto</button>
-                    <button class="btn btn-secondary hide-on-mobile" onclick="window.openBulkModal()"><i class="fas fa-layer-group"></i>Adicionar produtos</button>
                 </div>
                 <div id="prod-cats-nav" class="prod-tabs"></div>
                 <div class="panel-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
@@ -5866,7 +5864,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         <thead>
                             <tr>
                                 <th style="width: 40px; text-align: center;"><input type="checkbox" class="bulk-checkbox" onchange="window.toggleAll(this, 'produtos')"></th>
-                                <th style="width: 50px;">Foto</th><th>Desc. Imagem</th><th>Nome</th><th class="col-categoria">Categoria</th><th style="width: 6%;">Tam.</th><th style="width: 6%;">Mín.</th><th style="width: 10%;">Preço</th><th>Desc. Produto</th><th>Status</th><th style="width: 120px;">Ações</th>
+                                <th class="prod-th-produto">Produto</th><th class="col-categoria">Categoria</th><th>Desc. Produto</th><th style="width: 9%;">Tam.</th><th style="width: 6%;">Mín.</th><th style="width: 10%;">Preço</th><th style="width: 12%;">Status</th><th style="width: 120px;">Ações</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -5971,13 +5969,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         <label>Enviar Fotos Novas (Múltiplas permitidas)</label>
                         <label class="custom-file-upload">
                             <i class="fas fa-camera"></i> Escolher Arquivos
-                            <input type="file" id="car-files" multiple accept="image/*" required onchange="document.getElementById('car-file-name').textContent = this.files.length + ' arquivo(s) selecionado(s)';">
+                            <input type="file" id="car-files" multiple accept="image/*" onchange="window.adicionarArquivosCarrossel(this.files); this.value='';">
                         </label>
                         <span id="car-file-name" class="file-name-display">Nenhum arquivo escolhido</span>
                     </div>
+                    <div id="car-drop" class="carrossel-upload-drop"><i class="fas fa-images"></i> Ou arraste as fotos do computador para cá</div>
+                    <div id="car-previas" class="carrossel-upload-previas"></div>
                     <button type="submit" class="btn btn-secondary" id="btn-up-car" style="width: 100%;"><i class="fas fa-upload"></i> Adicionar ao Carrossel</button>
                 </form>
                 <div id="carrossel-aviso-padrao" class="carrossel-aviso" style="display:none;"></div>
+                <div id="carrossel-ordem-bar" class="carrossel-ordem-bar"><span><i class="fas fa-info-circle"></i> A ordem mudou. Salve para aplicar no site.</span><div class="btns"><button type="button" class="btn btn-outline" onclick="window.desfazerOrdemCarrossel()">Desfazer</button><button type="button" class="btn btn-primary" onclick="window.salvarOrdemCarrosselBtn()"><i class="fas fa-save"></i> Salvar ordem</button></div></div>
                 <div id="galeria-preview" class="panel-card carrossel-admin-grid"></div>
             </div>
 
@@ -6130,14 +6131,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
             <div id="t-gastos" class="tab-pane gastos-rebuild-pane">
                 <div class="buttons-area gastos-rebuild-buttons">
-                    <button class="btn btn-primary gastos-rebuild-new-btn" onclick="window.adicionarItemGasto()"><i class="fas fa-plus"></i> Novo Item</button>
                     <button class="btn btn-outline gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()" style="background: var(--favu-moss) !important;"><i class="fas fa-layer-group"></i> Lançar gastos</button>
-                    <button class="btn btn-outline gastos-rebuild-new-btn" onclick="window.abrirModalMarcasGasto()" style="background: var(--favu-rust) !important;"><i class="fas fa-tags"></i> Marcas</button>
                 </div>
 
-                <div class="prod-tabs gastos-subtabs">
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')"><i class="fas fa-table"></i> Tabela</button>
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')"><i class="fas fa-list"></i> Lista</button>
+                <!-- 2026-10-15: Marcas e Produtos com o mesmo visual de Tabela e Lista.
+                     No celular ficam 2 em cima e 2 embaixo. -->
+                <div class="gastos-abas-linha">
+                    <div class="prod-tabs gastos-subtabs gastos-gerenciar-tabs">
+                        <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
+                        <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Produtos</button>
+                    </div>
+                    <div class="prod-tabs gastos-subtabs">
+                        <button type="button" class="prod-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')"><i class="fas fa-table"></i> Tabela</button>
+                        <button type="button" class="prod-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')"><i class="fas fa-list"></i> Lista</button>
+                    </div>
                 </div>
 
                 <div class="panel-card gastos-rebuild-header">
@@ -6188,7 +6195,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     <!-- NOVO (2026-08): cabeçalho simplificado de 2 colunas, só aparece no celular
                          (ver CSS ".gastos-planilha-mobile-cols-header") - no Desktop fica oculto e
                          o <thead> de verdade (com os 12 meses) continua sendo o único cabeçalho. -->
-                    <div class="gastos-planilha-mobile-cols-header"><span>Item</span><span>Valores</span></div>
                     <div class="panel-card table-responsive gastos-rebuild-table-card">
                         <table class="favu-table gastos-rebuild-table">
                             <thead>
@@ -6457,7 +6463,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     </div>
                     
                     <div class="form-grid">
-                        <div style="grid-column: 1 / -1;"><label>Descrição do produto</label><textarea id="a-dmenu" rows="2"></textarea><small class="prod-resumo-hint">O resumo enviado no pedido é montado sozinho: <em>Nome + Descrição do produto | Tamanho</em>.</small></div>
+                        <div style="grid-column: 1 / -1;"><label>Descrição do produto</label><textarea id="a-dmenu" rows="2"></textarea></div>
                         <div style="display:none;"><label>Descrição do Resumo</label><textarea id="a-dres" rows="2"></textarea></div>
                     </div>
                     
@@ -6504,7 +6510,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     </div>
                     
                     <div class="form-grid">
-                        <div style="grid-column: 1 / -1;"><label>Descrição do produto</label><textarea id="e-dmenu" rows="2"></textarea><small class="prod-resumo-hint">O resumo enviado no pedido é montado sozinho: <em>Nome + Descrição do produto | Tamanho</em>.</small></div>
+                        <div style="grid-column: 1 / -1;"><label>Descrição do produto</label><textarea id="e-dmenu" rows="2"></textarea></div>
                         <div style="display:none;"><label>Descrição do Resumo</label><textarea id="e-dres" rows="2"></textarea></div>
                     </div>
                     
@@ -6608,8 +6614,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
                     <div class="aviso-schedule-box cat-schedule-box cat-entrega-box" style="margin-top:12px;">
                         <label class="aviso-schedule-title cat-schedule-title"><strong>Datas permitidas para retirada</strong></label>
-                        <small style="display:block; margin:0 0 10px; color:#777; font-size:0.8rem; line-height:1.4;">Deixe em branco para seguir a agenda normal. Se preencher, quem tiver itens desta categoria no pedido só consegue escolher datas dentro deste período.</small>
-                        <div class="form-grid" style="margin-bottom:0;"><div><label style="font-size:0.85rem;">Primeiro dia</label><input type="date" id="ac-entini"></div><div><label style="font-size:0.85rem;">Último dia</label><input type="date" id="ac-entfim"></div></div>
+                        <div class="form-grid" style="margin-bottom:10px;"><div><label style="font-size:0.85rem;">Primeiro dia</label><input type="date" id="ac-entini"></div><div><label style="font-size:0.85rem;">Último dia</label><input type="date" id="ac-entfim"></div></div>
+                        <div class="cat-rich-wrapper" style="margin-bottom:0;"><label style="font-size:0.85rem;">Mensagem exibida no site</label><div class="cat-rich-toolbar aviso-rich-toolbar"><div class="rich-tools-left"><button type="button" onclick="window.execCatRichText('bold','ac-ent')"><b>B</b></button><button type="button" onclick="window.execCatRichText('italic','ac-ent')"><i>I</i></button><button type="button" onclick="window.execCatRichText('underline','ac-ent')"><u>U</u></button></div><div class="rich-tools-separator"></div><div class="rich-tools-right"><button type="button" onclick="window.execCatRichText('justifyLeft','ac-ent')"><i class="fas fa-align-left"></i></button><button type="button" onclick="window.execCatRichText('justifyCenter','ac-ent')"><i class="fas fa-align-center"></i></button><button type="button" onclick="window.execCatRichText('justifyRight','ac-ent')"><i class="fas fa-align-right"></i></button><button type="button" onclick="window.execCatRichText('justifyFull','ac-ent')"><i class="fas fa-align-justify"></i></button></div></div><div id="ac-ent-obs-editor" class="cat-rich-editor" contenteditable="true" data-placeholder="Em branco: Pedidos contendo os itens da categoria X só são permitidos para retirada no período de DD/MM/AAAA - DD/MM/AAAA." onfocus="window.focusCatEditor('ac-ent')"></div><textarea id="ac-ent-obs" rows="2" style="display:none;"></textarea></div>
                     </div>
 
                     <div style="display: flex; gap: 10px;"><button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-add-cat', 'form-add-cat')" style="flex:1;">Cancelar</button><button type="submit" class="btn btn-primary" style="flex:1;">Criar Categoria</button></div>
@@ -6636,8 +6642,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
                     <div class="aviso-schedule-box cat-schedule-box cat-entrega-box" style="margin-top:12px;">
                         <label class="aviso-schedule-title cat-schedule-title"><strong>Datas permitidas para retirada</strong></label>
-                        <small style="display:block; margin:0 0 10px; color:#777; font-size:0.8rem; line-height:1.4;">Deixe em branco para seguir a agenda normal. Se preencher, quem tiver itens desta categoria no pedido só consegue escolher datas dentro deste período.</small>
-                        <div class="form-grid" style="margin-bottom:0;"><div><label style="font-size:0.85rem;">Primeiro dia</label><input type="date" id="ec-entini"></div><div><label style="font-size:0.85rem;">Último dia</label><input type="date" id="ec-entfim"></div></div>
+                        <div class="form-grid" style="margin-bottom:10px;"><div><label style="font-size:0.85rem;">Primeiro dia</label><input type="date" id="ec-entini"></div><div><label style="font-size:0.85rem;">Último dia</label><input type="date" id="ec-entfim"></div></div>
+                        <div class="cat-rich-wrapper" style="margin-bottom:0;"><label style="font-size:0.85rem;">Mensagem exibida no site</label><div class="cat-rich-toolbar aviso-rich-toolbar"><div class="rich-tools-left"><button type="button" onclick="window.execCatRichText('bold','ec-ent')"><b>B</b></button><button type="button" onclick="window.execCatRichText('italic','ec-ent')"><i>I</i></button><button type="button" onclick="window.execCatRichText('underline','ec-ent')"><u>U</u></button></div><div class="rich-tools-separator"></div><div class="rich-tools-right"><button type="button" onclick="window.execCatRichText('justifyLeft','ec-ent')"><i class="fas fa-align-left"></i></button><button type="button" onclick="window.execCatRichText('justifyCenter','ec-ent')"><i class="fas fa-align-center"></i></button><button type="button" onclick="window.execCatRichText('justifyRight','ec-ent')"><i class="fas fa-align-right"></i></button><button type="button" onclick="window.execCatRichText('justifyFull','ec-ent')"><i class="fas fa-align-justify"></i></button></div></div><div id="ec-ent-obs-editor" class="cat-rich-editor" contenteditable="true" data-placeholder="Em branco: Pedidos contendo os itens da categoria X só são permitidos para retirada no período de DD/MM/AAAA - DD/MM/AAAA." onfocus="window.focusCatEditor('ec-ent')"></div><textarea id="ec-ent-obs" rows="2" style="display:none;"></textarea></div>
                     </div>
 
                     <div style="display: flex; gap: 10px;"><button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editar-cat', 'form-edit-cat')" style="flex:1;">Cancelar</button><button type="submit" class="btn btn-primary" style="flex:1;">Atualizar</button></div>
@@ -12224,7 +12230,224 @@ html body .orc-popup .btn-secondary-form[style*="favu-rust"] { background-color:
     html body #t-orcamentos .qtd-btn-table { font-size: 1.1rem !important; }
 }
 </style>
-    <script type="module" src="./admin.js?v=20261014-orcamento-1"></script>
+    <style id="orcamento-igual-cardapio-v2">
+/* =====================================================================
+   ORÇAMENTO = CARDÁPIO (2026-10-15, v2). Medidas em px copiadas do
+   style-cardapio.css (lá 1rem = 16px; aqui no painel html é 90%, por
+   isso os rem davam tamanhos diferentes). Fica no fim da página para
+   vencer as regras antigas.
+   ===================================================================== */
+html body #t-orcamentos .orc-categorias-nav-wrapper { padding: 6px 0 !important; margin: 0 0 15px !important; background: #F4E6CB !important; border-bottom: 1px solid rgba(224,159,65,0.2) !important; box-shadow: 0 5px 15px rgba(29,40,20,0.05) !important; }
+html body #t-orcamentos #orc-cats-nav.categorias-draggable { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; gap: 10px !important; padding: 12px 15px !important; justify-content: flex-start !important; align-items: center !important; cursor: grab !important; scroll-behavior: auto; }
+html body #t-orcamentos #orc-cats-nav.categorias-draggable.arrastando { cursor: grabbing !important; }
+html body #t-orcamentos #orc-cats-nav .categoria-btn-orc { flex: 0 0 auto !important; padding: 6px 18px !important; font-size: 15.2px !important; line-height: normal !important; font-family: 'Basic Choice', cursive !important; letter-spacing: normal !important; }
+html body #t-orcamentos #orc-menu-container .categoria-title-orc { font-size: 48px !important; margin: 5px auto 25px !important; line-height: normal !important; }
+html body #t-orcamentos #orc-menu-container .table-card-orc { padding: 25px 35px !important; max-width: 850px !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table thead th { font-size: 15.2px !important; padding: 0 0 10px !important; line-height: normal !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table td { font-size: 14.4px !important; padding: 12px 5px !important; line-height: normal !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table td.col-item { font-size: 16.8px !important; padding-right: 15px !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec,
+html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid,
+html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid span { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; font-size: 14.4px !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec .peso-mobile { display: block !important; font-size: 12px !important; color: #46493A !important; margin-top: 2px !important; white-space: nowrap !important; line-height: normal !important; }
+html body #t-orcamentos #orc-menu-container .descricao, html body #t-orcamentos #orc-menu-container .descricao-orc { font-size: 12px !important; margin-top: 4px !important; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; color: #46493A !important; }
+html body #t-orcamentos #orc-menu-container .quantidade-input-group { gap: 5px !important; }
+html body #t-orcamentos #orc-menu-container table.orc-table input[type="number"] { width: 36px !important; height: 28px !important; font-size: 15.2px !important; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
+html body #t-orcamentos #orc-menu-container .qtd-btn-table { width: 25px !important; height: 30px !important; font-size: 17.6px !important; font-weight: bold !important; font-family: 'Basic Choice', cursive !important; color: #E09F41 !important; }
+html body #t-orcamentos #orc-menu-container .info-box-content { font-size: 15.2px !important; }
+
+@media (max-width: 600px) {
+    html body #t-orcamentos #orc-cats-nav .categoria-btn-orc { font-size: 16px !important; }
+    html body #t-orcamentos #orc-cats-nav.categorias-draggable { cursor: default !important; }
+    html body #t-orcamentos #orc-menu-container { padding: 10px !important; }
+    html body #t-orcamentos #orc-menu-container .categoria-title-orc { font-size: 41.6px !important; }
+    html body #t-orcamentos #orc-menu-container .table-card-orc { padding: 15px 10px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table thead th { font-size: 16px !important; padding-bottom: 12px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td { font-size: 15.2px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-item { font-size: 17.6px !important; padding-right: 4px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec { font-size: 15.2px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .moeda { display: block !important; font-size: 12px !important; color: #46493A !important; margin-bottom: 1px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .valor { display: block !important; font-size: 13.6px !important; }
+    html body #t-orcamentos #orc-menu-container .descricao, html body #t-orcamentos #orc-menu-container .descricao-orc { font-size: 12.8px !important; }
+    html body #t-orcamentos #orc-menu-container .quantidade-input-group { gap: 2px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table input[type="number"] { width: 34px !important; height: 28px !important; font-size: 16px !important; }
+    html body #t-orcamentos #orc-menu-container .qtd-btn-table { width: 24px !important; font-size: 20.8px !important; }
+}
+</style>
+
+<style id="pacote-20261015">
+/* =====================================================================
+   PACOTE 2026-10-15 — ajustes do retorno de testes (fica no fim da página)
+   ===================================================================== */
+
+/* A3: item travado na edição do pedido (mesma fonte dos outros campos) */
+#edit-modal-pedido .edit-item-row.edit-item-row-travado { outline: 2px solid #E60000; outline-offset: 2px; border-radius: 10px; }
+#edit-modal-pedido .edit-item-travado-nome { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:44px; padding:12px; border:1px solid #E60000; border-radius:8px; background:#fff; color:var(--favu-green); font-family:var(--font-numbers); font-size:0.95rem; cursor:not-allowed; }
+#edit-modal-pedido .edit-item-travado-nome i { font-size:0.8rem; color:#E60000; opacity:.75; }
+
+/* B1: editor da mensagem de retirada */
+.cat-entrega-box .cat-rich-editor { min-height: 70px; }
+.cat-rich-editor[data-placeholder]:empty::before { content: attr(data-placeholder); color: #aaa; font-size: 0.85rem; }
+
+/* C: tabela de produtos no computador */
+#tbl-produtos th.prod-th-produto { width: 190px; text-align: center; }
+#tbl-produtos td.prod-sel-cell { width: 40px; text-align: center; }
+#tbl-produtos td.prod-produto-cell { text-align: center; }
+#tbl-produtos .prod-produto-box { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#tbl-produtos .prod-produto-nome { color: var(--favu-rust); font-weight: bold; font-size: 1.05rem; line-height: 1.2; }
+#tbl-produtos .prod-produto-legenda { font-size: 0.75rem; color: #777; line-height: 1.3; max-width: 170px; }
+html body .prod-table-carousel, html body #tbl-produtos .admin-auto-carousel { width: 78px !important; height: 78px !important; }
+#tbl-produtos tbody tr.prod-grupo-nao-ultimo { border-bottom: none !important; }
+#tbl-produtos tbody tr.prod-grupo-nao-ultimo > td:not(.prod-grupo-cell) { border-bottom: none !important; }
+#tbl-produtos tbody tr.prod-grupo-continuacao { border-top: none !important; }
+#tbl-produtos tbody tr.prod-grupo-continuacao > td { border-top: none !important; }
+.badge.badge-cat-oculta { background: #eee !important; color: #777 !important; border: 1px dashed #bbb !important; white-space: nowrap; }
+#prod-cats-nav { flex-wrap: nowrap !important; overflow-x: auto !important; cursor: grab; scrollbar-width: none; }
+#prod-cats-nav::-webkit-scrollbar { display: none; }
+#prod-cats-nav .prod-tab-btn { flex: 0 0 auto; }
+#prod-cats-nav.arrastando, #prod-cats-nav.arrastando * { cursor: grabbing !important; }
+
+/* C12: produtos em cartões no celular */
+#tbl-produtos.tbl-produtos-cartoes thead { display:none !important; }
+#tbl-produtos.tbl-produtos-cartoes, #tbl-produtos.tbl-produtos-cartoes tbody { display:block !important; width:100% !important; }
+#tbl-produtos tr.prod-card-row { display:block !important; border:none !important; background:transparent !important; box-shadow:none !important; padding:0 !important; margin:0 !important; }
+#tbl-produtos tr.prod-card-row > td { display:block !important; padding:0 !important; border:none !important; width:100% !important; text-align:left !important; }
+#tbl-produtos tr.prod-card-row > td::before { content:none !important; display:none !important; }
+.prod-card-mobile { position:relative; background:#fff; border-radius:16px; padding:18px 16px 14px; margin:0 0 14px; box-shadow:0 4px 15px rgba(29,40,20,0.08); border:1px solid rgba(224,159,65,0.2); }
+.prod-card-mobile .prod-card-check { position:absolute; top:12px; right:12px; width:20px; height:20px; margin:0; padding:0; z-index:3; accent-color:#E09F41; opacity:.85; }
+.prod-card-nome { text-align:center; color:var(--favu-rust); font-family:'Basic Choice', cursive; font-size:1.3rem; line-height:1.2; text-transform:uppercase; padding:0 26px; margin-bottom:10px; }
+.prod-card-foto { display:flex; justify-content:center; margin:0 0 6px; }
+.prod-card-foto .admin-auto-carousel, html body #tbl-produtos .prod-card-foto .admin-auto-carousel { width:228px !important; height:228px !important; max-width:100%; margin:0 auto; border-radius:14px; overflow:hidden; position:relative; }
+.prod-card-foto .admin-auto-carousel img { width:100% !important; height:100% !important; object-fit:cover; }
+.prod-card-sem-foto { width:156px; height:156px; border-radius:14px; background:#f1f1f1; color:#ccc; font-size:2.4rem; display:flex; align-items:center; justify-content:center; }
+.prod-card-legenda { text-align:center; color:#777; font-size:0.8rem; font-style:italic; margin:2px 10px 6px; }
+.prod-card-desc { text-align:center; color:#46493A; font-size:0.8rem; margin-top:6px; }
+.prod-card-tams { margin:12px 0 6px; border-top:1px solid rgba(224,159,65,0.35); }
+.prod-card-tam { display:flex; justify-content:space-between; align-items:center; padding:9px 4px; border-bottom:1px dashed rgba(224,159,65,0.3); font-size:0.95rem; color:var(--favu-green); font-family:var(--font-numbers); }
+.prod-card-tam-preco { font-weight:600; }
+.prod-card-tam-oculto { font-size:0.7rem; color:#999; border:1px solid #ddd; border-radius:8px; padding:0 6px; margin-left:6px; }
+.prod-card-linha { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 4px; font-size:0.85rem; text-align:right; }
+.prod-card-linha > span:first-child { color:var(--favu-rust); font-family:'Basic Choice', cursive; text-transform:uppercase; text-align:left; white-space:nowrap; font-size:1rem; }
+.prod-card-acoes { display:flex; justify-content:center !important; gap:10px; margin-top:10px; }
+
+/* F3: carrossel — arrastar, salvar ordem, miniaturas antes de enviar */
+#galeria-preview .carrossel-item { cursor:grab; touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; transition:opacity .15s; }
+#galeria-preview .carrossel-item img { pointer-events:none; -webkit-user-drag:none; }
+#galeria-preview .carrossel-item.carrossel-arrastando { opacity:.3; }
+.carrossel-fantasma { position:fixed !important; z-index:99999; pointer-events:none; opacity:.92; transform:scale(1.06); box-shadow:0 12px 30px rgba(0,0,0,.25); margin:0 !important; border-radius:12px; overflow:hidden; }
+.carrossel-item-alca { cursor:grab; opacity:.7; padding:0 4px; }
+.carrossel-item-barra { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.carrossel-ordem-bar { display:none; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:10px 0; padding:10px 14px; border-radius:12px; background:rgba(224,159,65,0.12); border:1px dashed var(--favu-rust); font-family:var(--font-numbers); font-size:0.9rem; }
+.carrossel-ordem-bar.visivel { display:flex; }
+.carrossel-ordem-bar .btns { display:flex; gap:8px; }
+.carrossel-upload-drop { border:2px dashed rgba(224,159,65,0.5); border-radius:14px; padding:14px; text-align:center; color:#888; font-family:var(--font-numbers); font-size:0.85rem; transition:.2s; margin-bottom:10px; }
+.carrossel-upload-drop.sobre { background:rgba(224,159,65,0.12); border-color:var(--favu-rust); color:var(--favu-green); }
+.carrossel-upload-previas { display:grid; grid-template-columns:repeat(auto-fill, minmax(90px, 1fr)); gap:8px; margin-top:10px; }
+.carrossel-upload-previas:empty { display:none; }
+.carrossel-upload-previa { position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+.carrossel-upload-previa img { width:100%; height:100%; object-fit:cover; display:block; }
+.carrossel-upload-previa button { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:0.75rem; cursor:pointer; padding:0; }
+
+/* E: botões Marcas/Produtos com o visual de Tabela/Lista */
+#t-gastos .gastos-abas-linha { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:15px; }
+#t-gastos .gastos-abas-linha .gastos-subtabs { margin-bottom:0 !important; display:flex; gap:8px; flex-wrap:nowrap; overflow:visible; padding-bottom:0; }
+@media (max-width: 600px) {
+    #t-gastos .gastos-abas-linha { flex-direction:column; align-items:stretch; gap:8px; }
+    #t-gastos .gastos-abas-linha .gastos-subtabs { width:100%; }
+    #t-gastos .gastos-abas-linha .gastos-subtab-btn { flex:1 1 50%; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 8px; }
+}
+
+/* G: editor de temas com seções */
+#modal-editor-tema .tema-secao { border:1px solid rgba(224,159,65,0.35); border-radius:14px; padding:14px; margin-bottom:14px; background:rgba(224,159,65,0.04); }
+#modal-editor-tema .tema-secao-titulo { color:var(--favu-rust); font-size:1.3rem; margin:0 0 2px; }
+#modal-editor-tema .tema-secao-ajuda { display:block; color:#999; font-size:0.78rem; margin-bottom:10px; font-family:var(--font-numbers); }
+#modal-editor-tema .tema-cor-campo label { font-size:0.85rem; }
+#modal-editor-tema .tema-cor-linha { display:flex; gap:6px; align-items:center; }
+#modal-editor-tema .tema-cor-linha input[type="color"] { flex:1; min-width:0; height:40px; padding:2px; }
+#modal-editor-tema .tema-cor-reset { border:1px solid #ddd; background:#fff; border-radius:8px; padding:8px 10px; font-size:0.75rem; color:#777; cursor:pointer; font-family:var(--font-numbers); }
+#modal-editor-tema .tema-cor-campo.padrao input[type="color"] { opacity:.35; }
+#modal-editor-tema .tema-cor-campo.padrao .tema-cor-reset { background:var(--favu-green); color:#fff; border-color:var(--favu-green); }
+#modal-editor-tema .tema-img-campo img { max-width:100%; max-height:70px; object-fit:contain; display:block; margin:6px 0; background:repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; border-radius:8px; }
+
+/* E: cadastrar marca/produto nas janelas */
+.gasto-novo-cadastro { display:flex; gap:8px; margin:0 0 12px; }
+.gasto-novo-cadastro input { flex:1; min-width:0; }
+.gasto-novo-cadastro .btn { white-space:nowrap; padding:10px 14px; }
+
+/* E: Lançar gastos — local, nota, itens, data e parcelamento sempre na mesma linha */
+html body #modal-gastos-lote .gastos-lote-campos-unicos { grid-template-columns: minmax(0,2fr) minmax(0,2fr) minmax(0,.8fr) minmax(0,1.3fr) minmax(0,1.2fr) !important; gap: 10px !important; align-items: end; }
+html body #modal-gastos-lote .gastos-lote-campos-unicos > div { min-width: 0; }
+html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display:block; }
+@media (max-width: 700px) {
+    html body #modal-gastos-lote .gastos-lote-campos-unicos { gap: 6px !important; padding: 10px 8px !important; }
+    html body #modal-gastos-lote .gastos-lote-campos-unicos label { font-size: 0.7rem !important; }
+    html body #modal-gastos-lote .gastos-lote-campos-unicos input, html body #modal-gastos-lote .gastos-lote-campos-unicos select { font-size: 0.75rem !important; padding: 6px 4px !important; min-height: 36px !important; }
+}
+
+/* E: local + tag embaixo, centralizados entre si */
+.gasto-local-wrap { display:inline-flex; flex-direction:column; align-items:center; gap:2px; text-align:center; }
+.gasto-local-wrap .gasto-local-tag { margin-left:0 !important; }
+
+/* E: celular */
+@media (max-width: 900px) {
+    /* Lista: o Item segue o mesmo alinhamento dos outros dados (à direita) */
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > tbody > tr:not(.gastos-lancamentos-total-row) > td:first-child { width:100% !important; min-width:0 !important; max-width:100% !important; text-align:right !important; }
+    /* Tabela: barra de total com o mesmo visual da barra da Lista */
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row { padding: 12px 15px !important; border-radius: 12px !important; height: auto !important; align-items: center !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td:first-child { padding: 14px 15px !important; font-weight: 400 !important; font-size: 15.12px !important; font-family: 'Basic Choice', cursive !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td.gastos-rebuild-month-cell { padding: 14px 15px !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td.gastos-rebuild-month-cell span { font-weight: 700 !important; font-size: 17.28px !important; }
+}
+
+/* E: computador e tablet — tabelas sempre cabem na largura e total fixo no rodapé */
+@media (min-width: 901px) {
+    html body #t-gastos .gastos-rebuild-table-card { overflow-x: hidden !important; }
+    html body #t-gastos table.gastos-rebuild-table { min-width: 0 !important; width: 100% !important; }
+    /* Tabela (12 meses) */
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(1),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(1) { width: 15% !important; min-width: 0 !important; max-width: none !important; }
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(n+2):nth-child(-n+13),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(n+2):nth-child(-n+13) { width: 6.5% !important; min-width: 0 !important; max-width: none !important; padding-left: 2px !important; padding-right: 2px !important; }
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(14),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(14) { width: 7% !important; min-width: 0 !important; max-width: none !important; padding-left: 4px !important; padding-right: 4px !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-money { font-size: 0.78rem !important; white-space: nowrap !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-qty { font-size: 0.68rem !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-item-nome-inline { width: 100% !important; min-width: 0 !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions { flex-wrap: wrap !important; justify-content: center !important; gap: 4px !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions .btn-action { width: 30px !important; height: 30px !important; }
+    /* Lista (12 colunas) */
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > thead > tr > th,
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > tbody > tr > td { min-width: 0 !important; max-width: none !important; padding-left: 4px !important; padding-right: 4px !important; overflow-wrap: anywhere; white-space: normal !important; font-size: 0.82rem; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > thead > tr > th { font-size: 0.72rem !important; letter-spacing: 0 !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(1) { width: 12% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(2) { width: 9% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(3) { width: 12% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(4) { width: 6% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(5) { width: 7% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(6) { width: 8% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(7) { width: 8% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(8) { width: 8% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(9) { width: 7% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(10) { width: 5% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(11) { width: 10% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(12) { width: 8% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > tbody > tr.gastos-lancamentos-total-row > td:first-child { width: 92% !important; }
+    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper { flex-wrap: wrap !important; justify-content: center !important; gap: 4px !important; }
+    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper .btn-action { width: 28px !important; height: 28px !important; }
+    /* Totais fixos no rodapé da tela (o JS alinha com a tabela aberta) */
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row,
+    html body #t-gastos #gastos-painel-lancamentos .gastos-lancamentos-total-row { position: fixed !important; bottom: 12px !important; left: 25px; width: calc(100% - 50px); z-index: 950 !important; border-radius: 12px !important; overflow: hidden !important; box-shadow: 0 6px 22px rgba(0,0,0,0.28) !important; display: table !important; table-layout: fixed !important; }
+    html body #t-gastos #gastos-painel-lancamentos .gastos-lancamentos-total-row td { position: static !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td { padding-top: 14px !important; padding-bottom: 14px !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td:first-child { font-family: 'Basic Choice', cursive !important; font-weight: 400 !important; font-size: 1.05rem !important; text-transform: uppercase !important; padding-left: 15px !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-rebuild-month-cell span { font-size: 0.78rem !important; white-space: nowrap !important; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-total-anual-geral small { font-size: 0.6rem !important; display: block; }
+    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-total-anual-geral strong { font-size: 0.78rem !important; white-space: nowrap; }
+    html body #t-gastos #gastos-planilha-body, html body #t-gastos #gastos-lancamentos-lista-body { padding-bottom: 80px !important; }
+}
+</style>
+
+<script type="module" src="./admin.js?v=20261015-pacote-4"></script>
 
 
     <div id="modal-gasto-item" class="modal">
