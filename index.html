@@ -6019,15 +6019,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div class="buttons-area"><button type="button" class="btn btn-primary" onclick="window.abrirCadastroCupom()"><i class="fas fa-plus"></i> Cadastrar cupom</button></div>
                 <div class="panel-card cupons-cabecalho" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
                     <h2 class="font-display" style="margin: 0; font-size: 1.8rem; color: var(--favu-green);">Cupons</h2>
-                    <div class="search-filter-actions cupom-search-actions">
+                    <div class="search-filter-actions">
                         <input type="text" id="search-cupom" class="search-bar" style="margin: 0;" placeholder="Buscar cupom..." oninput="window.renderCupons()">
                         <button type="button" class="btn btn-outline btn-clear-filter" onclick="window.limparFiltroCupons()"><i class="fas fa-eraser"></i> Limpar Filtros</button>
                     </div>
                 </div>
 
-                <div class="cupons-tabs">
-                    <button type="button" id="tab-cupons-ativos" class="cupons-tab-btn active" onclick="window.setFiltroCupons('ativos')">Cupons Ativos</button>
-                    <button type="button" id="tab-cupons-inativos" class="cupons-tab-btn" onclick="window.setFiltroCupons('inativos')">Cupons Inativos</button>
+                <div class="avisos-tabs cupons-tabs-como-avisos">
+                    <button type="button" id="tab-cupons-ativos" class="cupons-tab-btn avisos-tab-btn active" onclick="window.setFiltroCupons('ativos')">Cupons Ativos</button>
+                    <button type="button" id="tab-cupons-inativos" class="cupons-tab-btn avisos-tab-btn" onclick="window.setFiltroCupons('inativos')">Cupons Inativos</button>
                 </div>
                 <div class="panel-card cupom-list-card">
                     <div id="cupons-lista" class="cupons-lista"></div>
@@ -6339,7 +6339,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             </div>
                             <div class="input-group exc-categorias-group">
                                 <label>Restringir categorias</label>
-                                <small class="campo-ajuda">Sem nenhuma marcada, a regra vale para todos os pedidos. Marcando, vale só para pedidos com itens dessas categorias.</small>
                                 <div id="exc-categorias" class="exc-categorias-lista"></div>
                             </div>
                             <div style="display:flex; gap:10px; margin-top: 18px;">
@@ -6379,7 +6378,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         </div>
                         <div class="input-group exc-categorias-group">
                             <label>Restringir categorias</label>
-                            <small class="campo-ajuda">Sem nenhuma marcada, a regra vale para todos os pedidos. Marcando, vale só para pedidos com itens dessas categorias.</small>
                             <div id="edit-exc-categorias" class="exc-categorias-lista"></div>
                         </div>
                         <div style="display:flex; gap:10px; margin-top: 18px;">
@@ -12577,6 +12575,10 @@ html body #t-tema #galeria-preview { padding: 0 !important; background: transpar
 }
 .tema-card-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .tema-card-acoes .btn-action { width: 34px; height: 34px; }
+.tema-card-acoes .btn-action.previa { background: var(--favu-green) !important; color: #fff !important; border: none !important; }
+#modal-previa-tema .previa-tema-url { display: flex; gap: 8px; align-items: flex-end; margin: 0 0 12px; padding: 10px 12px; background: var(--favu-card); border: 1px solid rgba(224,159,65,0.3); border-radius: 12px; }
+#modal-previa-tema .previa-tema-url > div { flex: 1; min-width: 0; }
+#modal-previa-tema .previa-tema-url small { display: block; color: #999; font-size: 0.75rem; font-family: var(--font-numbers); margin-top: 4px; }
 
 /* Editor de temas */
 html body #modal-editor-tema .modal-header h3 { color: var(--favu-green) !important; }
@@ -12588,14 +12590,14 @@ html body #modal-editor-tema .modal-header h3 { color: var(--favu-green) !import
 #modal-editor-tema .tema-campo-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 #modal-editor-tema .tema-campo-topo label { margin: 0 !important; font-size: 0.95rem !important; color: #46493A !important; }
 #modal-editor-tema .tema-badge-padrao { font-family: var(--font-numbers); font-size: 0.68rem; color: #777; background: #f1f1f1; border-radius: 10px; padding: 1px 8px; }
-#modal-editor-tema .tema-cor-linha { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-#modal-editor-tema .tema-swatch { display: inline-flex; align-items: center; gap: 8px; flex: 1; min-width: 140px; border: 1px solid rgba(224,159,65,0.35); background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; font-family: var(--font-numbers); font-size: 0.8rem; color: #46493A; }
+#modal-editor-tema .tema-cor-linha { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+#modal-editor-tema .tema-swatch { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; border: 1px solid rgba(224,159,65,0.35); background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; font-family: var(--font-numbers); font-size: 0.8rem; color: #46493A; }
 #modal-editor-tema .tema-swatch-cor { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.12); flex: 0 0 auto; }
-#modal-editor-tema .tema-cor-reset { border: 1px solid #ddd; background: #fff; border-radius: 10px; padding: 7px 10px; font-size: 0.75rem; color: var(--favu-green); cursor: pointer; font-family: var(--font-numbers); white-space: nowrap; }
+#modal-editor-tema .tema-cor-reset { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #ddd; background: #fff; border-radius: 10px; padding: 8px 10px; font-size: 0.75rem; color: var(--favu-green); cursor: pointer; font-family: var(--font-numbers); white-space: nowrap; }
 #modal-editor-tema .tema-img-campo { border: 1px dashed rgba(224,159,65,0.45); border-radius: 12px; padding: 12px; background: var(--favu-card); }
 #modal-editor-tema .tema-img-campo img { max-width: 100%; max-height: 70px; object-fit: contain; display: block; margin: 4px 0 8px; background: repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; border-radius: 8px; }
-#modal-editor-tema .tema-img-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-#modal-editor-tema .tema-img-acoes .custom-file-upload { margin: 0 !important; padding: 7px 12px !important; font-size: 0.8rem !important; flex: 1; }
+#modal-editor-tema .tema-img-acoes { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+#modal-editor-tema .tema-img-acoes .custom-file-upload, #modal-editor-tema .tema-img-acoes .tema-cor-reset { width: 100% !important; margin: 0 !important; padding: 8px 10px !important; font-size: 0.8rem !important; min-height: 36px; box-sizing: border-box; display: flex !important; align-items: center; justify-content: center; gap: 6px; border-radius: 10px !important; }
 #modal-editor-tema .tema-img-alerta { display: block; font-family: var(--font-numbers); font-size: 0.75rem; color: #b26a00; margin-bottom: 6px; }
 #modal-editor-tema .tema-img-alerta.ok { color: #2e7d32; }
 #modal-editor-tema .tema-img-alerta:empty { display: none; }
@@ -12630,27 +12632,34 @@ html body #modal-previa-tema .modal-header h3 { color: var(--favu-green) !import
 #modal-previa-tema .previa-tema-url label { font-size: 0.85rem !important; }
 
 /* Cupons: busca na mesma linha do título; botões da janela com largura igual */
-html body #t-cupons .cupons-cabecalho .search-filter-actions { display: flex !important; gap: 10px; align-items: center; flex: 0 1 560px !important; width: auto !important; margin: 0 !important; }
-html body #t-cupons .cupons-cabecalho .search-filter-actions .search-bar { flex: 1; min-width: 0; }
-html body #t-cupons .cupons-tabs { display: flex; gap: 10px; margin: 0 0 15px; }
-html body #t-cupons .cupons-tabs .cupons-tab-btn { flex: 0 0 auto !important; width: auto !important; }
+/* Cupons: filtro e abas Ativos/Inativos iguais aos de Comunicados (mesmas classes) */
 html body #modal-cadastrar-cupom .cupom-form-actions { display: flex; gap: 10px; margin-top: 18px; }
 html body #modal-cadastrar-cupom .cupom-form-actions .btn { flex: 1; }
 @media (max-width: 600px) { html body #t-cupons .cupons-cabecalho .search-filter-actions { flex: 1 1 100% !important; } }
 
+/* Orçamento: abas centralizadas quando todas cabem (sem corte) */
+html body #t-orcamentos #orc-cats-nav.categorias-draggable.abas-cabem { justify-content: center !important; }
+/* Categorias: "Postagem" e "Retirada" */
+#tbl-categorias .cat-prog-bloco { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+#tbl-categorias .cat-prog-titulo { font-family: 'Basic Choice', cursive; color: var(--favu-rust); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 2px; }
+#tbl-categorias .cat-prog-mobile { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; font-family: var(--font-numbers); font-size: 0.85rem; line-height: 1.35; }
+#tbl-categorias .cat-prog-mobile span { white-space: nowrap; }
 /* Categorias: programação e retirada separadas por uma linha */
 #tbl-categorias .cat-period-line { display: block; }
 #tbl-categorias .cat-period-sep { display: block; height: 0; border-top: 1px dashed rgba(224,159,65,0.45); margin: 6px 0; }
 #tbl-categorias .cat-period-retirada { color: var(--favu-green); }
 
 /* Horários: categorias da data específica */
-.exc-categorias-lista { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 10px; background: var(--favu-card); border: 1px solid rgba(224,159,65,0.25); border-radius: 10px; max-height: 160px; overflow-y: auto; }
-.exc-cat-opcao { display: inline-flex !important; align-items: center; gap: 6px; margin: 0 !important; font-family: var(--font-numbers) !important; font-size: 0.85rem !important; color: var(--favu-green) !important; cursor: pointer; }
-.exc-cat-opcao input { width: auto !important; margin: 0; }
+.exc-categorias-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; padding: 12px 14px; background: #fff; border: 1px solid rgba(224,159,65,0.35); border-radius: 10px; max-height: 260px; overflow-y: auto; }
+.exc-cat-opcao { display: flex !important; align-items: center; gap: 8px; margin: 0 !important; padding: 6px 4px; border-radius: 8px; font-family: var(--font-numbers) !important; font-size: 0.9rem !important; color: var(--favu-green) !important; cursor: pointer; line-height: 1.25; min-width: 0; }
+.exc-cat-opcao:hover { background: var(--favu-card); }
+.exc-cat-opcao input { width: 16px !important; height: 16px; margin: 0; flex: 0 0 auto; accent-color: var(--favu-rust); }
+.exc-cat-opcao span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 480px) { .exc-categorias-lista { grid-template-columns: 1fr; } }
 .campo-ajuda { display: block; color: #999; font-size: 0.78rem; font-family: var(--font-numbers); margin: -2px 0 8px; line-height: 1.4; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-6"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-7"></script>
 
 
     <div id="modal-gasto-item" class="modal">

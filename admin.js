@@ -1708,17 +1708,32 @@ function horariosResumoDia(dataISO, nomeCategoria) {
     if (lista.length === 1) return lista[0];
     return texto;
 }
+function linhasPostagemCategoria(ini, fim) {
+    const a = formatScheduleValue(ini.data, ini.hora), b = formatScheduleValue(fim.data, fim.hora);
+    if (a !== '-' && b !== '-') return [a, b];
+    if (a !== '-') return [`A partir de ${a}`];
+    if (b !== '-') return [`Até ${b}`];
+    return [];
+}
 function linhasRetiradaCategoria(c) {
-    const linhas = [];
-    const montar = (rotulo, iso) => {
-        if (!iso) return;
-        const dataBR = formatarDataEntregaCat(iso);
+    const ini = c?.entregaInicioData || '', fim = c?.entregaFimData || '';
+    const linhaDia = (iso) => {
         const horas = horariosResumoDia(iso, c.nome);
-        linhas.push(`${rotulo}: ${dataBR}${horas ? ` | ${horas}` : ''}`);
+        return `${formatarDataEntregaCat(iso)}${horas ? ` | ${horas}` : ''}`;
     };
-    montar('Retirada início', c?.entregaInicioData);
-    if (c?.entregaFimData && c.entregaFimData !== c.entregaInicioData) montar('Retirada fim', c.entregaFimData);
-    return linhas;
+    if (ini && fim) {
+        const linhas = [];
+        const d = new Date(`${ini}T12:00:00`), dFim = new Date(`${fim}T12:00:00`);
+        for (let n = 0; d <= dFim && n < 31; n++) {
+            const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            linhas.push(linhaDia(iso));
+            d.setDate(d.getDate() + 1);
+        }
+        return linhas;
+    }
+    if (ini) return [`A partir de ${linhaDia(ini)}`];
+    if (fim) return [`Até ${linhaDia(fim)}`];
+    return [];
 }
 
 function descreverPeriodoEntregaCat(c) {
@@ -2071,16 +2086,14 @@ window.renderCatsTable = function() {
             const fimData = normalizeDateBR(fim.data);
             const iniResumo = formatScheduleValue(ini.data, ini.hora);
             const fimResumo = formatScheduleValue(fim.data, fim.hora);
-            // 2026-10-15: Início/Fim da exibição e, separado por uma linha, Início/Fim da
-            // retirada com os horários das datas específicas (Horários) ligadas à categoria.
-            const linhasExibicao = [
-                formatScheduleLine('Início', ini.data, ini.hora),
-                formatScheduleLine('Fim', fim.data, fim.hora)
-            ].filter(Boolean);
+            // 2026-10-15: "Postagem" (quando a categoria aparece no site) e, separado por uma
+            // linha, "Retirada" com um dia por linha e os horários de cada dia, se forem restritos.
+            const linhasPostagem = linhasPostagemCategoria(ini, fim);
             const linhasRetirada = linhasRetiradaCategoria(c);
+            const blocoProg = (titulo, linhas) => `<div class="cat-prog-bloco"><span class="cat-prog-titulo">${titulo}</span>${linhas.map(l => `<span class="cat-period-line">${l}</span>`).join('')}</div>`;
             const blocos = [];
-            if (linhasExibicao.length) blocos.push(linhasExibicao.map(l => `<span class="cat-period-line">${l}</span>`).join(''));
-            if (linhasRetirada.length) blocos.push(linhasRetirada.map(l => `<span class="cat-period-line cat-period-retirada">${l}</span>`).join(''));
+            if (linhasPostagem.length) blocos.push(blocoProg('Postagem:', linhasPostagem));
+            if (linhasRetirada.length) blocos.push(blocoProg('Retirada:', linhasRetirada));
             const programacaoHtml = blocos.length
                 ? blocos.join('<span class="cat-period-sep"></span>')
                 : '<span class="cat-period-line">-</span>';
@@ -2094,9 +2107,8 @@ window.renderCatsTable = function() {
                 <td class="cat-period-cell desktop-schedule-cell" data-label="Programação:">
                     ${programacaoHtml}
                 </td>
-                <td class="cat-mobile-start mobile-schedule-cell" data-label="Início:">${iniResumo}</td>
-                <td class="cat-mobile-end mobile-schedule-cell" data-label="Fim:">${fimResumo}</td>
-                ${linhasRetirada.length ? `<td class="cat-mobile-retirada mobile-schedule-cell" data-label="Retirada:">${linhasRetirada.map(l => `<span class="cat-period-line">${l.replace(/^Retirada /, '')}</span>`).join('')}</td>` : ''}
+                <td class="cat-mobile-postagem mobile-schedule-cell" data-label="Postagem:"><div class="cat-prog-mobile">${linhasPostagem.length ? linhasPostagem.map(l => `<span>${l}</span>`).join('') : '<span>-</span>'}</div></td>
+                ${linhasRetirada.length ? `<td class="cat-mobile-retirada mobile-schedule-cell" data-label="Retirada:"><div class="cat-prog-mobile">${linhasRetirada.map(l => `<span>${l}</span>`).join('')}</div></td>` : ''}
                 <td class="cat-notice-cell" data-label="Aviso:"><small class="cat-notice-summary"><span class="cat-notice-desktop">${renderCatNoticeSummary(c.mensagemObs)}</span><span class="cat-notice-mobile">${renderCatNoticeStatus(c.mensagemObs)}</span></small></td>
                 <td class="cat-status-cell" data-label="Status:"><span class="badge ${catStatusVisual.statusClasse}">${catStatusVisual.statusTexto}</span></td>
                 <td class="cat-actions-cell" data-label="Ações:">
@@ -2600,9 +2612,18 @@ async function loadProds() {
 
 // NOVO (2026-10-15): abas de categoria roláveis como no cardápio dos clientes —
 // arrastar com o mouse, rodinha do mouse e a aba clicada desliza até ficar visível.
+// Quando todas as abas cabem, ficam centralizadas e sem corte; senão, rolam.
+// Só mede com a barra visível (largura > 0) e mede de novo sempre que ela muda de tamanho.
+function medirAbasCabem(container) {
+    if (!container) return;
+    container.classList.remove('abas-cabem');
+    if (!container.clientWidth) return;
+    container.classList.toggle('abas-cabem', container.scrollWidth <= container.clientWidth + 1);
+}
 function prepararAbasRolagem(container) {
     if (!container || container.__abasProntas) return;
     container.__abasProntas = true;
+    if (window.ResizeObserver) new ResizeObserver(() => medirAbasCabem(container)).observe(container);
     let down = false, startX = 0, startScroll = 0, moved = false;
     container.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
@@ -2627,6 +2648,7 @@ function prepararAbasRolagem(container) {
 }
 function centralizarAbaAtiva(container, scrollAnterior) {
     if (!container) return;
+    medirAbasCabem(container);
     if (scrollAnterior != null) container.scrollLeft = scrollAnterior;
     const ativo = container.querySelector('.active, .active-link');
     if (!ativo) return;
@@ -3291,8 +3313,10 @@ window.renderOrcamentoMenu = function() {
     const termoNormalizado = normalizarBuscaOrcamento(termoBuscaOrcamento);
     
     const orcAgrupados = {}; 
+    // 2026-10-15: produto de categoria apagada não aparece (antes a categoria "fantasma" voltava aqui).
+    const nomesCategoriasExistentes = new Set((globalCategories || []).map(c => c.nome));
     allProducts
-        .filter(p => p.ativo && isCategoriaDoProdutoVisivel(p))
+        .filter(p => p.ativo && nomesCategoriasExistentes.has(p.categoria || '') && isCategoriaDoProdutoVisivel(p))
         .filter(p => {
             if (!termoNormalizado) return true;
             return [p.nome, p.categoria, p.tamanho, p.descricaoItem, p.descricaoResumo, p.descricaoPopup]
@@ -12758,7 +12782,7 @@ window.renderTemas = function() {
                 <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
                 <div class="tema-card-acoes">
                     <button type="button" class="btn btn-primary" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i> Aplicar</button>
-                    <button type="button" class="btn-action" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
+                    <button type="button" class="btn-action previa" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
                     <button type="button" class="btn-action edit" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
                     <button type="button" class="btn-action copy" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
                     ${t.id !== 'padrao' ? `<button type="button" class="btn-action del" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
@@ -13185,11 +13209,21 @@ window.abrirPreviaTema = function(id) {
                         <button type="button" class="prod-tab-btn" data-previa-aparelho="celular" onclick="window.trocarPreviaTema('aparelho','celular')"><i class="fas fa-mobile-alt"></i> Celular</button>
                     </div>
                 </div>
+                <div class="previa-tema-url">
+                    <div><label>Endereço do site de clientes</label><input type="text" id="previa-tema-url" value="${escapeHtmlPedido(urlSiteClientes())}" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.salvarUrlPreviaTema();}">
+                    <small>O mesmo endereço em que o cardápio abre para os clientes (ex.: https://seusite.com/). Fica salvo neste navegador.</small></div>
+                    <button type="button" class="btn btn-primary" onclick="window.salvarUrlPreviaTema()">Abrir</button>
+                </div>
                 <div class="previa-tema-moldura"><iframe id="previa-tema-iframe" title="Prévia do site"></iframe></div>
-                <div class="previa-tema-url"><label>Endereço do site de clientes</label><input type="text" id="previa-tema-url" value="${escapeHtmlPedido(urlSiteClientes())}" onchange="try{localStorage.setItem('favu_site_url', this.value.trim())}catch(e){}; window.trocarPreviaTema()"></div>
             </div>
         </div>`;
     window.openModal('modal-previa-tema');
+    window.trocarPreviaTema();
+};
+window.salvarUrlPreviaTema = function() {
+    const v = String(document.getElementById('previa-tema-url')?.value || '').trim();
+    if (!/^https?:\/\//i.test(v)) return window.showToast('Informe o endereço completo, começando com https://', true);
+    try { localStorage.setItem('favu_site_url', v); } catch (e) {}
     window.trocarPreviaTema();
 };
 window.trocarPreviaTema = function(tipo, valor) {
@@ -13668,7 +13702,9 @@ window.fecharCadastroCupom = function() {
 function renderCategoriasExcecao(containerId, selecionadas = []) {
     const box = document.getElementById(containerId);
     if (!box) return;
-    const nomes = (globalCategories || []).map(c => c.nome).filter(Boolean);
+    // Em ordem alfabética, ignorando emojis e acentos.
+    const chaveOrdem = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N} ]/gu, '').trim().toLowerCase();
+    const nomes = (globalCategories || []).map(c => c.nome).filter(Boolean).sort((a, b) => chaveOrdem(a).localeCompare(chaveOrdem(b), 'pt-BR'));
     const marcadas = new Set(selecionadas || []);
     box.innerHTML = nomes.length ? nomes.map(n => `
         <label class="exc-cat-opcao"><input type="checkbox" value="${escapeHtmlPedido(n)}" ${marcadas.has(n) ? 'checked' : ''}> <span>${escapeHtmlPedido(n)}</span></label>`).join('')
