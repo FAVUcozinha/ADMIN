@@ -1,4 +1,4 @@
-const CACHE_NAME = 'favu-app-v143-itens-congelados';
+const CACHE_NAME = 'favu-app-v144-pacote-3';
 const urlsToCache = [
   './',
   './index.html',

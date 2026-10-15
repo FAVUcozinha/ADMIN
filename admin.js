@@ -1705,11 +1705,12 @@ function descreverPeriodoEntregaCat(c) {
 function getCatEntregaFromForm(prefix) {
     const entregaInicioData = document.getElementById(`${prefix}-entini`)?.value || '';
     const entregaFimData = document.getElementById(`${prefix}-entfim`)?.value || '';
+    const entregaMensagem = String(document.getElementById(`${prefix}-entmsg`)?.value || '').trim();
     if (entregaInicioData && entregaFimData && entregaFimData < entregaInicioData) {
         customAlert("Nas datas de retirada, o último dia não pode ser antes do primeiro dia.", "Atenção");
         return null;
     }
-    return { entregaInicioData, entregaFimData };
+    return { entregaInicioData, entregaFimData, entregaMensagem };
 }
 
 function orderedCategoriesList() {
@@ -2321,6 +2322,8 @@ window.openEditCat = async(id) => {
     document.getElementById('ec-fimh').value = fim.hora || '';
     if (document.getElementById('ec-entini')) document.getElementById('ec-entini').value = c.entregaInicioData || '';
     if (document.getElementById('ec-entfim')) document.getElementById('ec-entfim').value = c.entregaFimData || '';
+    window.garantirCampoMensagemRetirada?.('ec');
+    if (document.getElementById('ec-entmsg')) document.getElementById('ec-entmsg').value = c.entregaMensagem || '';
 
     window.openModal('modal-editar-cat');
 };
@@ -2588,11 +2591,16 @@ function textoPuroProduto(valor) {
 
 // Resumo padrão enviado no pedido: "Nome Descrição | Tamanho"
 function gerarDescricaoResumoProduto(nome, descricao, tamanho) {
-    const base = [textoPuroProduto(nome), textoPuroProduto(descricao)].filter(Boolean).join(' ');
+    // ALTERADO (2026-10): o resumo do pedido é só "Nome | Tamanho" (sem a descrição).
+    const base = textoPuroProduto(nome);
     const tam = String(tamanho || '').trim();
     return tam ? `${base} | ${tam}` : base;
 }
 window.gerarDescricaoResumoProduto = gerarDescricaoResumoProduto;
+function resumoProdutoAdmin(p) {
+    return gerarDescricaoResumoProduto(p?.nome, '', p?.tamanho) || p?.nome || 'Item';
+}
+window.resumoProdutoAdmin = resumoProdutoAdmin;
 
 function chaveGrupoProduto(p) {
     return [p?.categoria || '', textoPuroProduto(p?.nome).toLowerCase(), textoPuroProduto(p?.descricaoItem).toLowerCase()].join('|||');
@@ -2636,6 +2644,54 @@ window.renderProdsTable = function() {
     });
 
     let html = '';
+
+    // NOVO (2026-10): no celular, cada produto vira um cartão só, com a foto grande
+    // centralizada e os tamanhos agrupados com o preço de cada um.
+    if (window.innerWidth <= 768) {
+        window.__prodsModoCartao = true;
+        grupos.forEach(grupo => {
+            const base = grupo[0];
+            const imagensProduto = window.getProdutoImagens(grupo.find(x => window.getProdutoImagens(x).length) || base);
+            const imgTag = imagensProduto.length ? window.renderAutoCarouselAdmin(imagensProduto, 'prod-table-carousel prod-card-carousel') : `<div class="prod-card-sem-foto"><i class="fas fa-image"></i></div>`;
+            const categoriaVisivel = isCategoriaDoProdutoVisivel(base);
+            const algumVisivel = grupo.some(p => p.ativo) && categoriaVisivel;
+            const todosAtivos = grupo.every(p => p.ativo);
+            const ids = grupo.map(p => p.id);
+            const idsAttr = ids.join(',');
+            const tamanhos = grupo.map(p => {
+                const ocultoItem = !p.ativo ? ' <span class="prod-card-tam-oculto">oculto</span>' : '';
+                return `<div class="prod-card-tam">
+                    <span class="prod-card-tam-nome">${escapeHtmlPedido(p.tamanho || (grupo.length > 1 ? '-' : 'Único'))}${ocultoItem}</span>
+                    <span class="prod-card-tam-preco">R$ ${(Number(p.preco) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <input type="checkbox" class="row-checkbox" value="${p.id}" style="display:none;">
+                </div>`;
+            }).join('');
+            const subStatus = !categoriaVisivel ? '<span class="prod-status-sub">categoria oculta</span>' : '';
+            html += `<tr class="prod-card-row"><td colspan="12">
+                <div class="prod-card-mobile">
+                    <input type="checkbox" class="bulk-checkbox prod-card-check" title="Selecionar" onchange="window.toggleSelecaoCartaoProduto(this)">
+                    <div class="prod-card-foto">${imgTag}</div>
+                    <div class="prod-card-nome">${window.formatText(base.nome || '')}</div>
+                    ${base.descricaoItem ? `<div class="prod-card-desc">${window.formatText(base.descricaoItem)}</div>` : ''}
+                    <div class="prod-card-tams">${tamanhos}</div>
+                    ${base.descricaoPopup ? `<div class="prod-card-linha"><span>Desc. imagem</span><small>${window.formatText(base.descricaoPopup)}</small></div>` : ''}
+                    <div class="prod-card-linha"><span>Status</span><span><span class="badge ${algumVisivel ? 'ativo' : 'inativo'}">${algumVisivel ? 'Visível' : 'Oculto'}</span>${subStatus}</span></div>
+                    <div class="action-btns-wrapper prod-card-acoes">
+                        <button class="btn-action edit" title="Editar" onclick="window.openEditor('${base.id}')"><i class="fas fa-pencil-alt"></i></button>
+                        <button class="btn-action toggle" title="${!categoriaVisivel ? 'A categoria está oculta: os itens só aparecem quando ela voltar' : 'Mostrar/ocultar todos os tamanhos'}" onclick="window.togGrupoProd('${idsAttr}', ${!todosAtivos})"><i class="fas fa-${algumVisivel ? 'eye' : 'eye-slash'}"></i></button>
+                        <button class="btn-action del" title="Excluir todos os tamanhos" onclick="window.delGrupoProd('${idsAttr}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </td></tr>`;
+        });
+        tb.innerHTML = html;
+        document.getElementById('tbl-produtos')?.classList.add('tbl-produtos-cartoes');
+        setTimeout(() => window.iniciarCarrosseisAutomaticosAdmin(document.getElementById('tbl-produtos')), 80);
+        return;
+    }
+    window.__prodsModoCartao = false;
+    document.getElementById('tbl-produtos')?.classList.remove('tbl-produtos-cartoes');
+
     grupos.forEach(grupo => {
         const base = grupo[0];
         const imagensProduto = window.getProdutoImagens(grupo.find(x => window.getProdutoImagens(x).length) || base);
@@ -2874,6 +2930,34 @@ window.togP = async(id, s) => {
     if(index > -1) allProducts[index].ativo = s;
     window.renderProdsTable(); 
 };
+
+// Cartão do celular: uma marcação seleciona todos os tamanhos do produto.
+window.toggleSelecaoCartaoProduto = function(cb) {
+    cb.closest('.prod-card-mobile')?.querySelectorAll('.row-checkbox').forEach(x => { x.checked = cb.checked; });
+    window.checkSelection('produtos');
+};
+window.togGrupoProd = async function(idsTexto, status) {
+    const ids = String(idsTexto || '').split(',').filter(Boolean);
+    await Promise.all(ids.map(id => updateDoc(doc(db, "produtos", id), { ativo: status })));
+    ids.forEach(id => { const p = allProducts.find(x => x.id === id); if (p) p.ativo = status; });
+    window.renderProdsTable();
+};
+window.delGrupoProd = function(idsTexto) {
+    const ids = String(idsTexto || '').split(',').filter(Boolean);
+    customConfirm(ids.length > 1 ? `Excluir o produto com os ${ids.length} tamanhos?` : "Excluir item?", async () => {
+        await Promise.all(ids.map(id => deleteDoc(doc(db, "produtos", id))));
+        allProducts = allProducts.filter(p => !ids.includes(p.id));
+        window.renderProdsTable();
+        window.renderOrcamentoMenu();
+    });
+};
+// Troca entre tabela e cartões quando a tela muda de tamanho (ex.: girar o celular).
+window.addEventListener('resize', () => {
+    const cartao = window.innerWidth <= 768;
+    if (cartao !== !!window.__prodsModoCartao && document.querySelector('#tbl-produtos tbody')) {
+        try { window.renderProdsTable(); } catch (e) {}
+    }
+});
 
 window.delP = async(id) => { 
     customConfirm("Excluir item?", async () => { 
@@ -3217,7 +3301,7 @@ window.calcOrcamentoTotal = function() {
             totalItens += q;
             const cat = p.categoria || 'Geral';
             if (!gruposResumo[cat]) gruposResumo[cat] = [];
-            gruposResumo[cat].push({ q, p: preco, desc: p.descricaoResumo || p.nome, id: p.id });
+            gruposResumo[cat].push({ q, p: preco, desc: resumoProdutoAdmin(p), id: p.id });
         }
     });
 
@@ -3339,7 +3423,7 @@ window.gerarOrcamentoWA = async function() {
             const preco = converterValorParaNumero(p.preco);
             bruto += (q * preco);
             if (!groups[cat]) groups[cat] = [];
-            groups[cat].push({ q, p: preco, desc: p.descricaoResumo || p.nome, produtoId: p.id, tamanho: p.tamanho || '' });
+            groups[cat].push({ q, p: preco, desc: resumoProdutoAdmin(p), produtoId: p.id, tamanho: p.tamanho || '' });
         }
     });
 
@@ -3356,6 +3440,16 @@ window.gerarOrcamentoWA = async function() {
 
     if (hrInput && hr) hrInput.value = hr;
     if (!nm || !dt || !hr || !pag || !tel) return customAlert("Preencha todos os dados.");
+
+    // NOVO (2026-10): itens de categoria com período de retirada (ex.: Natal).
+    const janelaOrc = window.calcularJanelaRetiradaOrcamento();
+    const foraJanelaOrc = janelaOrc.restrita && ((janelaOrc.inicio && dt < janelaOrc.inicio) || (janelaOrc.fim && dt > janelaOrc.fim));
+    if (foraJanelaOrc && !window.__orcIgnorarJanela) {
+        return customConfirm(`${janelaOrc.mensagem}\n\nA data escolhida está fora desse período. Gerar o orçamento mesmo assim?`, () => {
+            window.__orcIgnorarJanela = true;
+            window.gerarOrcamentoWA().finally(() => { window.__orcIgnorarJanela = false; });
+        });
+    }
 
     const descManual = Math.max(0, converterValorParaNumero(document.getElementById('orc-desconto')?.value || 0));
     const descCupom = window.orcCupomAplicado?.desconto || 0;
@@ -3464,7 +3558,7 @@ async function loadTema() {
     const t = await getDoc(doc(db, "config", "tema"));
     if(t.exists()) { const d = t.data(); if(d.bg) document.getElementById('cor-bg').value = d.bg; if(d.card) document.getElementById('cor-card').value = d.card; if(d.txt) document.getElementById('cor-txt').value = d.txt; if(d.acc) document.getElementById('cor-acc').value = d.acc; }
 }
-document.getElementById('form-cores').onsubmit = async(e) => { e.preventDefault(); await setDoc(doc(db, "config", "tema"), { bg: document.getElementById('cor-bg').value, card: document.getElementById('cor-card').value, txt: document.getElementById('cor-txt').value, acc: document.getElementById('cor-acc').value }); customAlert("Identidade visual aplicada!"); };
+document.getElementById('form-cores').onsubmit = async(e) => { e.preventDefault(); await setDoc(doc(db, "config", "tema"), { bg: document.getElementById('cor-bg').value, card: document.getElementById('cor-card').value, txt: document.getElementById('cor-txt').value, acc: document.getElementById('cor-acc').value }, { merge: true }); customAlert("Identidade visual aplicada!"); };
 
 document.getElementById('form-carrossel').onsubmit = async(e) => {
     e.preventDefault(); const btn = document.getElementById('btn-up-car'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...'; btn.disabled = true;
@@ -3507,17 +3601,108 @@ window.renderCarrosselAdmin = function() {
                 <button type="button" class="btn btn-secondary" onclick="window.importarFotosPadraoCarrossel()"><i class="fas fa-download"></i> Trazer fotos atuais</button>
             </div>`;
     }
+    // ALTERADO (2026-10): reordenar arrastando e soltando, no computador e no celular.
+    // No celular, segure a foto por um instante e arraste. As setas saíram.
     div.innerHTML = carrosselLista.map((d, i) => `
-        <div class="carrossel-item" data-id="${d.id}" draggable="true" ondragstart="window.handleDragStart.call(this, event)" ondragover="window.handleDragOver.call(this, event)" ondrop="window.handleDrop.call(this, event)" ondragend="window.handleDragEnd.call(this, event)">
-            <img src="${d.url}" loading="lazy" onerror="this.style.opacity=.3">
+        <div class="carrossel-item" data-id="${d.id}">
+            <img src="${d.url}" loading="lazy" draggable="false" onerror="this.style.opacity=.3">
             <div class="carrossel-item-barra">
-                <button type="button" title="Mover para trás" ${i === 0 ? 'disabled' : ''} onclick="window.moverItemCarrossel(${i}, -1)"><i class="fas fa-arrow-left"></i></button>
-                <span>${i + 1}</span>
-                <button type="button" title="Mover para frente" ${i === carrosselLista.length - 1 ? 'disabled' : ''} onclick="window.moverItemCarrossel(${i}, 1)"><i class="fas fa-arrow-right"></i></button>
+                <span class="carrossel-item-alca" title="Arraste para mudar a ordem"><i class="fas fa-grip-vertical"></i></span>
+                <span class="carrossel-item-num">${i + 1}</span>
                 <button type="button" title="Apagar" onclick="window.delDoc('carrossel','${d.id}')"><i class="fas fa-trash"></i></button>
             </div>
         </div>`).join('');
+    iniciarArrastarCarrosselAdmin(div);
 };
+
+function iniciarArrastarCarrosselAdmin(container) {
+    if (container.__dndPronto) return;
+    container.__dndPronto = true;
+    let alvo = null, fantasma = null, timerSegurar = null, inicio = null, arrastando = false, offX = 0, offY = 0;
+
+    const limpar = () => {
+        clearTimeout(timerSegurar);
+        if (fantasma) fantasma.remove();
+        if (alvo) alvo.classList.remove('carrossel-arrastando');
+        container.classList.remove('carrossel-em-arraste');
+        fantasma = null; alvo = null; arrastando = false; inicio = null;
+        document.body.style.userSelect = '';
+    };
+
+    const comecarArraste = (e) => {
+        if (!alvo) return;
+        arrastando = true;
+        const r = alvo.getBoundingClientRect();
+        offX = inicio.x - r.left; offY = inicio.y - r.top;
+        fantasma = alvo.cloneNode(true);
+        fantasma.classList.add('carrossel-fantasma');
+        fantasma.style.width = r.width + 'px';
+        fantasma.style.height = r.height + 'px';
+        document.body.appendChild(fantasma);
+        alvo.classList.add('carrossel-arrastando');
+        container.classList.add('carrossel-em-arraste');
+        document.body.style.userSelect = 'none';
+        if (navigator.vibrate) try { navigator.vibrate(15); } catch (er) {}
+        mover(e);
+    };
+
+    const mover = (e) => {
+        if (!fantasma) return;
+        fantasma.style.left = (e.clientX - offX) + 'px';
+        fantasma.style.top = (e.clientY - offY) + 'px';
+        fantasma.style.display = 'none';
+        const sob = document.elementFromPoint(e.clientX, e.clientY)?.closest('.carrossel-item');
+        fantasma.style.display = '';
+        if (sob && sob !== alvo && sob.parentNode === container) {
+            const r = sob.getBoundingClientRect();
+            const depois = (e.clientX - r.left) > r.width / 2;
+            container.insertBefore(alvo, depois ? sob.nextSibling : sob);
+        }
+        // Rolagem automática perto das bordas da tela.
+        if (e.clientY < 60) window.scrollBy(0, -12);
+        else if (e.clientY > window.innerHeight - 60) window.scrollBy(0, 12);
+    };
+
+    container.addEventListener('pointerdown', (e) => {
+        const item = e.target.closest('.carrossel-item');
+        if (!item || e.target.closest('button') || e.button > 0) return;
+        alvo = item;
+        inicio = { x: e.clientX, y: e.clientY, tipo: e.pointerType };
+        if (e.pointerType !== 'mouse') {
+            // Toque: segura ~0,3s para começar a arrastar (assim a tela ainda rola normalmente).
+            timerSegurar = setTimeout(() => comecarArraste(e), 300);
+        }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+        if (!alvo || !inicio) return;
+        if (!arrastando) {
+            const dist = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y);
+            if (inicio.tipo === 'mouse' && dist > 6) comecarArraste(e);
+            else if (inicio.tipo !== 'mouse' && dist > 10) { clearTimeout(timerSegurar); alvo = null; inicio = null; }
+            return;
+        }
+        e.preventDefault();
+        mover(e);
+    }, { passive: false });
+
+    // Durante o arraste no celular, impede a tela de rolar.
+    container.addEventListener('touchmove', (e) => { if (arrastando) e.preventDefault(); }, { passive: false });
+    container.addEventListener('contextmenu', (e) => { if (e.target.closest('.carrossel-item')) e.preventDefault(); });
+
+    const soltar = async () => {
+        if (!arrastando) { limpar(); return; }
+        const ordemIds = Array.from(container.querySelectorAll('.carrossel-item')).map(el => el.dataset.id);
+        limpar();
+        const mapa = new Map(carrosselLista.map(d => [d.id, d]));
+        carrosselLista = ordemIds.map(id => mapa.get(id)).filter(Boolean);
+        window.renderCarrosselAdmin();
+        try { await salvarOrdemCarrossel(); window.showToast('Ordem salva!'); }
+        catch (err) { console.error(err); window.showToast('Erro ao salvar a ordem.', true); }
+    };
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', () => { if (!arrastando) limpar(); });
+}
 
 async function salvarOrdemCarrossel() {
     await Promise.all(carrosselLista.map((d, i) => d.order === i ? null : updateDoc(doc(db, 'carrossel', d.id), { order: i })).filter(Boolean));
@@ -4146,20 +4331,38 @@ function gerarPedidoId(prefixo) {
     return `${prefixo}-${Date.now().toString()}`;
 }
 function extrairNumeroIdPedido(id) {
-    return String(id || '').replace(/^(PED|ORC|PD|CPD|EXC|EXD)-?/i, '');
+    return String(id || '').replace(/^(PED|ORC|PD|CPD|EXC|EXD|CXD)-?/i, '');
 }
 function getPedidoDocumentoId(id) {
     const pedido = window.todosPedidos.find(p => p.ID_do_Pedido === id || p._docId === id);
     return pedido?._docId || id;
 }
+// ALTERADO (2026-10): pedido apagado ou cancelado passa a ter o ID "CXD-número"
+// (ex.: PED-2026... ou ORC-1792... vira CXD-2026... / CXD-1792...). O ID original
+// fica guardado em "idOriginal". Os apagados não aparecem no painel, só no banco.
 function calcularNovoIdExcluido(id) {
-    return `EXC-${extrairNumeroIdPedido(id)}`;
+    return `CXD-${extrairNumeroIdPedido(id)}`;
 }
 function isPedidoExcluidoPainel(p) {
     const id = String(p?.ID_do_Pedido || '');
     const status = String(p?.Status_do_Pedido || '').toLowerCase();
     return p?.excluido === true || /^EXC-|^EXD-/i.test(id) || status === 'excluído' || status === 'excluido';
 }
+function montarAtualizacaoStatusPedido(id, novoStatus) {
+    const p = (window.todosPedidos || []).find(x => x.ID_do_Pedido === id || x._docId === id) || {};
+    const idAtual = String(p.ID_do_Pedido || id || '');
+    const dados = { Status_do_Pedido: novoStatus };
+    if (novoStatus === 'Cancelado' && !/^CXD-/i.test(idAtual)) {
+        dados.ID_do_Pedido = calcularNovoIdExcluido(idAtual);
+        dados.idOriginal = idAtual;
+        dados.canceladoEm = Date.now();
+    } else if (novoStatus !== 'Cancelado' && /^CXD-/i.test(idAtual)) {
+        const prefixo = String(p.origem || '').toLowerCase() === 'orcamento' ? 'ORC' : 'PED';
+        dados.ID_do_Pedido = p.idOriginal || `${prefixo}-${extrairNumeroIdPedido(idAtual)}`;
+    }
+    return dados;
+}
+window.montarAtualizacaoStatusPedido = montarAtualizacaoStatusPedido;
 function extrairValorDescontoLinhaPedido(linha) {
     const texto = String(linha || '').trim();
     if (!/(desconto|cupom)/i.test(texto)) return 0;
@@ -4568,7 +4771,7 @@ window.excluirPedidoLogico = function(id) {
                 statusAnterior: p.Status_do_Pedido || 'Pedido Recebido',
                 excluido: true,
                 excluidoEm: Date.now(),
-                idOriginal: id
+                idOriginal: p.idOriginal || id
             });
             window.ticketsSelecionados.delete(id);
             window.todosPedidos = window.todosPedidos.filter(pedido => pedido.ID_do_Pedido !== id);
@@ -4621,7 +4824,7 @@ window.drop = async function(e) {
         
         window.mostrarLoading(true);
         try {
-            await updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), { Status_do_Pedido: novoStatus });
+            await updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), montarAtualizacaoStatusPedido(id, novoStatus));
             window.showToast("Status atualizado!");
         } catch (err) {
             window.showToast("Erro ao mover pedido", true);
@@ -4635,7 +4838,7 @@ window.atualizarBarraAcoesPedidos = function() { const bar = document.getElement
 window.limparSelecaoPedidos = function() { window.ticketsSelecionados.clear(); document.querySelectorAll('.card-checkbox, .column-select-all-checkbox').forEach(cb => cb.checked = false); window.atualizarBarraAcoesPedidos(); }
 
 window.abrirBulkMove = function() { document.getElementById('bulk-move-modal').style.display = 'flex'; }
-window.executarBulkMove = async function() { const nS = document.getElementById('bulk-move-select').value; window.mostrarLoading(true); await Promise.all(Array.from(window.ticketsSelecionados).map(id => updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), { Status_do_Pedido: nS }))); window.mostrarLoading(false); document.getElementById('bulk-move-modal').style.display = 'none'; window.limparSelecaoPedidos(); window.showToast("Pedidos movidos!"); }
+window.executarBulkMove = async function() { const nS = document.getElementById('bulk-move-select').value; window.mostrarLoading(true); await Promise.all(Array.from(window.ticketsSelecionados).map(id => updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), montarAtualizacaoStatusPedido(id, nS)))); window.mostrarLoading(false); document.getElementById('bulk-move-modal').style.display = 'none'; window.limparSelecaoPedidos(); window.showToast("Pedidos movidos!"); }
 window.abrirBulkPayment = function() { document.getElementById('bulk-payment-modal').style.display = 'flex'; }
 window.executarBulkPayment = async function() { const nS = document.getElementById('bulk-payment-select').value; window.mostrarLoading(true); await Promise.all(Array.from(window.ticketsSelecionados).map(id => updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), { Status_Pagamento: nS }))); window.mostrarLoading(false); document.getElementById('bulk-payment-modal').style.display = 'none'; window.limparSelecaoPedidos(); window.showToast("Pagamentos atualizados!"); }
 window.atualizarStatusPagamentoDireto = async function(id, sel) { window.mostrarLoading(true); try { await updateDoc(doc(db, "pedidos", getPedidoDocumentoId(id)), { Status_Pagamento: sel.value }); window.showToast("Pagamento Atualizado!"); } catch (err) { window.showToast("Erro ao salvar", true); } window.mostrarLoading(false); }
@@ -4855,7 +5058,7 @@ function montarOptionsProdutosEditPedido(selectedId, item = null) {
     const usarCongelado = itemPedidoDiferenteDoCadastro(item);
     let html = '<option value="">Selecione...</option><option value="__OUTROS__" ' + (!usarCongelado && selectedId === '__OUTROS__' ? 'selected' : '') + '>Outros</option>';
     if (usarCongelado) {
-        html += `<option value="__CONGELADO__" selected>${escapeHtmlPedido(item.nome)} (como no pedido)</option>`;
+        html += `<option value="__CONGELADO__" selected>${escapeHtmlPedido(item.nome)}</option>`;
     }
     [...allProducts].sort(sortProducts).forEach(p => {
         const nome = p.tamanho ? `${p.nome} - ${p.tamanho}` : p.nome;
@@ -4979,14 +5182,21 @@ window.renderItensPedidoEdit = function() {
             html += `<div class="edit-item-produto-header"><i class="fas fa-utensils"></i> ${base}</div>`;
         }
 
-        const celulaProduto = ehVariacaoAgrupavel
+        // ALTERADO (2026-10): item cujo produto foi renomeado, mudou de preço ou foi
+        // excluído depois do pedido fica TRAVADO (contorno vermelho): não dá para trocar
+        // o produto (senão ele sumiria), só alterar as unidades e o valor.
+        if (item.travado === undefined) item.travado = itemPedidoDiferenteDoCadastro(item);
+        const travado = !!item.travado && !item.outros;
+        const celulaProduto = travado
+            ? `<div class="edit-item-travado-nome" title="Este produto mudou no cadastro depois do pedido. Só as unidades e o valor podem ser editados.">${ehVariacaoAgrupavel ? `Tamanho ${escapeHtmlPedido(sufixo)}` : escapeHtmlPedido(item.nome)}<i class="fas fa-lock"></i></div>`
+            : ehVariacaoAgrupavel
             ? `<span class="edit-item-variacao-label">Tamanho ${sufixo}</span><select style="display:none;" onchange="window.atualizarItemPedidoSelect('${item.id}', this.value)">${montarOptionsProdutosEditPedido(item.produtoId, item)}</select>`
             : `<select onchange="window.atualizarItemPedidoSelect('${item.id}', this.value)">${montarOptionsProdutosEditPedido(item.produtoId, item)}</select>
                <input class="edit-outros-name" type="text" value="${String(item.nome || '').replace(/"/g, '&quot;')}" placeholder="Nome do item" ${item.outros ? '' : 'readonly style="display:none;"'} oninput="window.atualizarItemPedidoCampo('${item.id}', 'nome', this.value)">`;
 
         const total = (parseInt(item.qtd) || 0) * (parseFloat(item.preco) || 0);
         html += `
-            <div class="edit-item-row${ehVariacaoAgrupavel ? ' edit-item-row-variacao' : ''}" data-id="${item.id}">
+            <div class="edit-item-row${ehVariacaoAgrupavel ? ' edit-item-row-variacao' : ''}${travado ? ' edit-item-row-travado' : ''}" data-id="${item.id}">
                 <div class="edit-item-product-cell">
                     ${celulaProduto}
                 </div>
@@ -4996,7 +5206,7 @@ window.renderItensPedidoEdit = function() {
                 </div>
                 <div>
                     <label>Valor Unid.</label>
-                    <input type="number" step="0.01" min="0" value="${(parseFloat(item.preco) || 0).toFixed(2)}" ${item.outros ? '' : 'readonly'} oninput="window.atualizarItemPedidoCampo('${item.id}', 'preco', this.value)">
+                    <input type="number" step="0.01" min="0" value="${(parseFloat(item.preco) || 0).toFixed(2)}" ${item.outros || travado ? '' : 'readonly'} ${travado ? `onchange="window.atualizarItemPedidoCampo('${item.id}', 'preco', this.value)"` : `oninput="window.atualizarItemPedidoCampo('${item.id}', 'preco', this.value)"`}>
                 </div>
                 <div class="edit-item-total-cell">
                     <label>Total</label>
@@ -5092,7 +5302,7 @@ window.toggleCamposOutros = function() {
 window.atualizarItemPedidoSelect = function(itemId, produtoId) {
     const item = window.editPedidoItens.find(i => i.id === itemId);
     if (!item) return;
-    if (produtoId === '__CONGELADO__') return; // mantém nome/preço do momento do pedido
+    if (produtoId === '__CONGELADO__' || item.travado) return; // mantém nome/preço do momento do pedido
     item.congelado = false;
 
     if (produtoId === '__OUTROS__') {
@@ -5710,7 +5920,7 @@ window.confirmarEnvioWhatsApp = async function(m) {
     let num = p.Numero ? p.Numero.replace(/\D/g, '') : ''; if(num.length >= 10 && !num.startsWith('55')) num = '55' + num;
     const n = (p.Nome_Cliente || 'Cliente').trim().split(' ')[0]; let t = '';
     if (m === 'resumo') { t = `*Olá ${n}!*\n\n*Resumo do Pedido ${p.ID_do_Pedido}*\n\n*Data de Entrega:* ${p.Data_Entrega || '--/--/----'}\n*Horário:* ${p.Horario_Entrega || '--:--'}\n\n${p.Resumo_dos_Itens ? `*Itens:*\n${p.Resumo_dos_Itens}\n\n` : ''}*Total:* R$ ${formatarValorComCentavos(p.Total_Final)}\n*Forma de Pagamento:* ${p.Forma_de_Pagamento || 'Não informado'}`; } 
-    else if (m === 'pronto') { window.mostrarLoading(true); try { await updateDoc(doc(db, "pedidos", p.ID_do_Pedido), { Status_do_Pedido: 'Retirada' }); } catch(e) {} window.mostrarLoading(false); t = `*Olá ${n}!*\n\nSeu pedido *${p.ID_do_Pedido}* está pronto para retirada!\n\n${p.Data_Entrega || '--/--/----'}\n${p.Horario_Entrega || '--:--'}\n\nAguardamos você!`; } 
+    else if (m === 'pronto') { window.mostrarLoading(true); try { await updateDoc(doc(db, "pedidos", getPedidoDocumentoId(p.ID_do_Pedido)), montarAtualizacaoStatusPedido(p.ID_do_Pedido, 'Retirada')); } catch(e) {} window.mostrarLoading(false); t = `*Olá ${n}!*\n\nSeu pedido *${p.ID_do_Pedido}* está pronto para retirada!\n\n${p.Data_Entrega || '--/--/----'}\n${p.Horario_Entrega || '--:--'}\n\nAguardamos você!`; } 
     else { t = `Olá ${n}!`; }
     if(num) window.open(`https://wa.me/${num}?text=${encodeURIComponent(t)}`, '_blank'); document.getElementById('whatsapp-confirm-modal').style.display = 'none';
 }
@@ -12276,9 +12486,14 @@ window.renomearMarcaGasto = async function(idx, novoNomeBruto) {
 
 
 // =====================================================================
-// TEMAS DO SITE (2026-10)
-// Coleção "temas": cada tema guarda cores e imagens. "Aplicar" copia o tema
-// para config/tema, que os dois sites de clientes já leem ao abrir.
+// TEMAS DO SITE (2026-10, revisado)
+// CORREÇÃO do "Erro ao salvar o tema": as 4 imagens iam todas para o mesmo
+// documento e passavam do limite de 1 MB do Firestore. Agora:
+//  - a lista de temas fica em config/temas_lista (só cores e referências);
+//  - cada imagem fica no seu próprio documento config/tema_img_<id>
+//    (ou no Firebase Storage, quando ele estiver liberado);
+//  - as imagens mantêm a transparência (PNG) quando o arquivo original tem.
+// "Aplicar" copia o tema para config/tema, que os dois sites leem ao abrir.
 // =====================================================================
 const TEMA_PADRAO_BASE = { nome: 'Padrão (claro)', bg: '#F4E6CB', card: '#FFF5EB', txt: '#2C2C2C', acc: '#E09F41', logoPrincipal: '', imgTopo: '', imgRodape: '', logoRodape: '' };
 const CAMPOS_IMG_TEMA = [
@@ -12287,26 +12502,67 @@ const CAMPOS_IMG_TEMA = [
     ['imgRodape', 'Faixa do rodapé', 'Imagem de fundo do rodapé'],
     ['logoRodape', 'Logo do rodapé', 'Logo pequena do rodapé (celular)']
 ];
+const CHAVES_IMG_TEMA = CAMPOS_IMG_TEMA.map(c => c[0]);
 let temasLista = [];
 let temaAtivoId = '';
+const cacheImagensTema = new Map();
+
+async function resolverImagemTemaAdmin(valor) {
+    const v = String(valor || '');
+    if (!v.startsWith('cfgimg:')) return v;
+    const id = v.slice(7);
+    if (cacheImagensTema.has(id)) return cacheImagensTema.get(id);
+    try {
+        const snap = await getDoc(doc(db, 'config', id));
+        const data = snap.exists() ? (snap.data().data || '') : '';
+        cacheImagensTema.set(id, data);
+        return data;
+    } catch (e) { return ''; }
+}
+
+function gerarIdTema() {
+    return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+async function salvarListaTemas() {
+    const lista = temasLista.map(t => {
+        const limpo = { id: t.id, nome: t.nome || 'Tema', bg: t.bg, card: t.card, txt: t.txt, acc: t.acc, ordem: t.ordem || 0 };
+        CHAVES_IMG_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
+        return limpo;
+    });
+    await setDoc(doc(db, 'config', 'temas_lista'), { temas: lista, atualizadoEm: Date.now() });
+}
 
 async function carregarTemas() {
     try {
-        const [snap, ativo] = await Promise.all([getDocs(collection(db, 'temas')), getDoc(doc(db, 'config', 'tema'))]);
-        temasLista = [];
-        snap.forEach(d => temasLista.push({ id: d.id, ...d.data() }));
+        const [listaSnap, ativo] = await Promise.all([getDoc(doc(db, 'config', 'temas_lista')), getDoc(doc(db, 'config', 'tema'))]);
         const atual = ativo.exists() ? ativo.data() : {};
         temaAtivoId = atual.temaAtivoId || '';
+        temasLista = listaSnap.exists() && Array.isArray(listaSnap.data().temas) ? listaSnap.data().temas.slice() : [];
+
+        let mudou = false;
+        if (!listaSnap.exists()) {
+            // Traz os temas salvos na versão anterior (coleção "temas"), se houver.
+            try {
+                const antigos = await getDocs(collection(db, 'temas'));
+                antigos.forEach(d => temasLista.push({ id: d.id, ...d.data() }));
+                if (temasLista.length) mudou = true;
+            } catch (e) { /* coleção bloqueada pelas regras: ignora */ }
+        }
         if (!temasLista.some(t => t.id === 'padrao')) {
             // Primeiro uso: cria o tema Padrão com as cores que já estão no site hoje.
-            const padrao = { ...TEMA_PADRAO_BASE, bg: atual.bg || TEMA_PADRAO_BASE.bg, card: atual.card || TEMA_PADRAO_BASE.card, txt: atual.txt || TEMA_PADRAO_BASE.txt, acc: atual.acc || TEMA_PADRAO_BASE.acc, ordem: 0 };
-            await setDoc(doc(db, 'temas', 'padrao'), padrao);
-            temasLista.unshift({ id: 'padrao', ...padrao });
-            if (!temaAtivoId) temaAtivoId = 'padrao';
+            temasLista.unshift({ ...TEMA_PADRAO_BASE, id: 'padrao', bg: atual.bg || TEMA_PADRAO_BASE.bg, card: atual.card || TEMA_PADRAO_BASE.card, txt: atual.txt || TEMA_PADRAO_BASE.txt, acc: atual.acc || TEMA_PADRAO_BASE.acc, ordem: 0 });
+            mudou = true;
         }
+        if (!temaAtivoId) temaAtivoId = 'padrao';
         temasLista.sort((a, b) => (a.id === 'padrao' ? -1 : b.id === 'padrao' ? 1 : (a.ordem || 0) - (b.ordem || 0)));
+        if (mudou) await salvarListaTemas();
         window.renderTemas();
-    } catch (e) { console.error('Erro ao carregar temas:', e); }
+    } catch (e) {
+        console.error('Erro ao carregar temas:', e);
+        const box = document.getElementById('lista-temas');
+        if (box) box.innerHTML = `<small style="color:#c00;">Não foi possível carregar os temas (${escapeHtmlPedido(e?.code || e?.message || 'erro')}).</small>`;
+    }
 }
 window.carregarTemas = carregarTemas;
 
@@ -12315,28 +12571,45 @@ window.renderTemas = function() {
     if (!box) return;
     box.innerHTML = temasLista.map(t => {
         const ativo = t.id === temaAtivoId;
-        const fundo = t.imgTopo ? `background-image:url('${t.imgTopo}');` : `background:${t.bg};`;
         return `<div class="tema-card ${ativo ? 'ativo' : ''}">
-            <div class="tema-card-preview" style="${fundo}">
-                <div class="tema-card-box" style="background:${t.card}; color:${t.txt};">${t.logoPrincipal ? `<img src="${t.logoPrincipal}" style="max-height:40px; max-width:100%;">` : 'Prévia'}</div>
+            <div class="tema-card-preview" data-tema-topo="${t.id}" style="background:${t.bg}; background-size:cover; background-position:center;">
+                <div class="tema-card-box" style="background:${t.card}; color:${t.txt};"><span data-tema-logo="${t.id}">Prévia</span></div>
                 <span class="tema-card-acc" style="background:${t.acc};"></span>
             </div>
             <div class="tema-card-body">
                 <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
                 <div class="tema-card-acoes">
                     <button type="button" class="btn btn-primary" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i> Aplicar</button>
-                    <button type="button" class="btn btn-outline" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
+                    <button type="button" class="btn btn-outline" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
                     <button type="button" class="btn btn-outline" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
                     ${t.id !== 'padrao' ? `<button type="button" class="btn btn-danger" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
                 </div>
             </div>
         </div>`;
     }).join('');
+    // Prévias das imagens (carregam depois, sem travar a lista).
+    temasLista.forEach(async t => {
+        if (t.imgTopo) {
+            const src = await resolverImagemTemaAdmin(t.imgTopo);
+            const el = box.querySelector(`[data-tema-topo="${t.id}"]`);
+            if (el && src) el.style.backgroundImage = `url('${src}')`;
+        }
+        if (t.logoPrincipal) {
+            const src = await resolverImagemTemaAdmin(t.logoPrincipal);
+            const el = box.querySelector(`[data-tema-logo="${t.id}"]`);
+            if (el && src) el.outerHTML = `<img src="${src}" style="max-height:40px; max-width:100%;">`;
+        }
+    });
 };
 
 function dadosPublicosTema(t) {
-    const { nome, bg, card, txt, acc, logoPrincipal, imgTopo, imgRodape, logoRodape } = t;
-    return { nome, bg, card, txt, acc, logoPrincipal: logoPrincipal || '', imgTopo: imgTopo || '', imgRodape: imgRodape || '', logoRodape: logoRodape || '' };
+    const out = { nome: t.nome || '', bg: t.bg, card: t.card, txt: t.txt, acc: t.acc };
+    CHAVES_IMG_TEMA.forEach(k => { out[k] = t[k] || ''; });
+    return out;
+}
+
+async function publicarTemaNoSite(t) {
+    await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(t), temaAtivoId: t.id, aplicadoEm: Date.now() });
 }
 
 window.aplicarTema = function(id) {
@@ -12345,11 +12618,11 @@ window.aplicarTema = function(id) {
     customConfirm(`Aplicar o tema "${t.nome}" nos sites agora?`, async () => {
         window.mostrarLoading(true);
         try {
-            await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(t), temaAtivoId: id, aplicadoEm: Date.now() });
+            await publicarTemaNoSite(t);
             temaAtivoId = id;
             window.renderTemas();
             window.showToast(`Tema "${t.nome}" aplicado!`);
-        } catch (e) { console.error(e); customAlert('Erro ao aplicar o tema.', 'Erro'); }
+        } catch (e) { console.error(e); customAlert(`Erro ao aplicar o tema (${e?.code || e?.message || 'erro'}).`, 'Erro'); }
         window.mostrarLoading(false);
     });
 };
@@ -12357,17 +12630,32 @@ window.aplicarTema = function(id) {
 window.duplicarTema = async function(id) {
     const t = temasLista.find(x => x.id === id);
     if (!t) return;
-    await addDoc(collection(db, 'temas'), { ...dadosPublicosTema(t), nome: `${t.nome} (cópia)`, ordem: Date.now() });
-    window.showToast('Tema duplicado!');
+    try {
+        temasLista.push({ ...t, id: gerarIdTema(), nome: `${t.nome} (cópia)`, ordem: Date.now() });
+        await salvarListaTemas();
+        window.showToast('Tema duplicado!');
+    } catch (e) { console.error(e); customAlert(`Erro ao duplicar o tema (${e?.code || e?.message || 'erro'}).`, 'Erro'); }
     carregarTemas();
 };
+
+async function apagarImagensSemUsoTema(refs) {
+    const emUso = new Set();
+    temasLista.forEach(t => CHAVES_IMG_TEMA.forEach(k => { if (t[k]) emUso.add(t[k]); }));
+    await Promise.all(refs.filter(r => r && String(r).startsWith('cfgimg:') && !emUso.has(r))
+        .map(r => deleteDoc(doc(db, 'config', String(r).slice(7))).catch(() => {})));
+}
 
 window.excluirTema = function(id) {
     const t = temasLista.find(x => x.id === id);
     if (!t || id === 'padrao') return;
     if (id === temaAtivoId) return customAlert('Este tema está no ar. Aplique outro tema antes de excluir.', 'Atenção');
     customConfirm(`Excluir o tema "${t.nome}"?`, async () => {
-        await deleteDoc(doc(db, 'temas', id));
+        try {
+            temasLista = temasLista.filter(x => x.id !== id);
+            await salvarListaTemas();
+            await apagarImagensSemUsoTema(CHAVES_IMG_TEMA.map(k => t[k]));
+            window.showToast('Tema excluído.');
+        } catch (e) { console.error(e); customAlert(`Erro ao excluir o tema (${e?.code || e?.message || 'erro'}).`, 'Erro'); }
         carregarTemas();
     });
 };
@@ -12381,7 +12669,8 @@ window.abrirEditorTema = function(id = '') {
         modal.className = 'modal';
         document.body.appendChild(modal);
     }
-    window.__temaEdicao = { id, imgs: { logoPrincipal: t.logoPrincipal || '', imgTopo: t.imgTopo || '', imgRodape: t.imgRodape || '', logoRodape: t.logoRodape || '' }, arquivos: {} };
+    window.__temaEdicao = { id, imgs: {}, arquivos: {} };
+    CHAVES_IMG_TEMA.forEach(k => { window.__temaEdicao.imgs[k] = t[k] || ''; });
     const cor = (campo, label) => `<div><label>${label}</label><input type="color" id="tema-${campo}" value="${t[campo] || TEMA_PADRAO_BASE[campo]}"></div>`;
     modal.innerHTML = `
         <div class="modal-content" style="max-width:620px; border:2px solid var(--favu-rust);">
@@ -12394,7 +12683,7 @@ window.abrirEditorTema = function(id = '') {
                 <div class="form-grid">${CAMPOS_IMG_TEMA.map(([campo, label, ajuda]) => `
                     <div class="tema-img-campo">
                         <label>${label}</label><small style="color:#999;">${ajuda}</small>
-                        <img id="tema-prev-${campo}" src="${window.__temaEdicao.imgs[campo]}" style="${window.__temaEdicao.imgs[campo] ? '' : 'display:none;'}">
+                        <img id="tema-prev-${campo}" src="" style="display:none;">
                         <div style="display:flex; gap:6px;">
                             <label class="custom-file-upload" style="flex:1; padding:6px 10px; font-size:0.8rem;"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" onchange="window.selecionarImagemTema('${campo}', this)"></label>
                             <button type="button" class="btn btn-outline" style="padding:6px 10px;" title="Usar padrão" onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i></button>
@@ -12407,6 +12696,11 @@ window.abrirEditorTema = function(id = '') {
             </div>
         </div>`;
     window.openModal('modal-editor-tema');
+    CHAVES_IMG_TEMA.forEach(async campo => {
+        const src = await resolverImagemTemaAdmin(window.__temaEdicao.imgs[campo]);
+        const prev = document.getElementById(`tema-prev-${campo}`);
+        if (prev && src && !window.__temaEdicao.arquivos[campo]) { prev.src = src; prev.style.display = ''; }
+    });
 };
 
 window.selecionarImagemTema = function(campo, input) {
@@ -12424,36 +12718,103 @@ window.limparImagemTema = function(campo) {
     if (prev) { prev.src = ''; prev.style.display = 'none'; }
 };
 
+// Prepara a imagem do tema: reduz para no máximo 1600px e mantém PNG (com transparência)
+// quando o original é PNG/WEBP/GIF/SVG. Vai diminuindo até caber com folga em 1 documento.
+function prepararImagemTema(file) {
+    return new Promise((resolve, reject) => {
+        const leitor = new FileReader();
+        leitor.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+        leitor.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error('Arquivo de imagem inválido.'));
+            img.onload = () => {
+                const manterTransparencia = /png|webp|gif|svg/i.test(file.type || file.name || '');
+                const LIMITE = 700000;
+                let maior = 1600;
+                let qualidade = 0.85;
+                for (let tentativa = 0; tentativa < 10; tentativa++) {
+                    const escala = Math.min(1, maior / Math.max(img.width || 1, img.height || 1));
+                    const c = document.createElement('canvas');
+                    c.width = Math.max(1, Math.round((img.width || 1) * escala));
+                    c.height = Math.max(1, Math.round((img.height || 1) * escala));
+                    const ctx = c.getContext('2d');
+                    if (!manterTransparencia) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+                    ctx.drawImage(img, 0, 0, c.width, c.height);
+                    const dataUrl = manterTransparencia ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', qualidade);
+                    if (dataUrl.length <= LIMITE) return resolve(dataUrl);
+                    maior = Math.round(maior * 0.8);
+                    qualidade = Math.max(0.6, qualidade - 0.05);
+                }
+                reject(new Error('A imagem ficou grande demais mesmo reduzida. Tente um arquivo menor.'));
+            };
+            img.src = leitor.result;
+        };
+        leitor.readAsDataURL(file);
+    });
+}
+
+async function enviarImagemTema(file) {
+    const dataUrl = await prepararImagemTema(file);
+    // 1) Firebase Storage, se estiver liberado (mais leve para o site).
+    if (!window.__storageIndisponivel) {
+        try {
+            const blob = await (await fetch(dataUrl)).blob();
+            const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+            const storageRef = ref(storage, `temas/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`);
+            const comTimeout = (promise, ms) => Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('tempo esgotado')), ms))]);
+            const snap = await comTimeout(uploadBytes(storageRef, blob, { contentType: blob.type, cacheControl: 'public,max-age=31536000' }), 15000);
+            return await comTimeout(getDownloadURL(snap.ref), 10000);
+        } catch (e) {
+            window.__storageIndisponivel = true;
+            console.warn('Storage indisponível para a imagem do tema, salvando no banco:', e);
+        }
+    }
+    // 2) Documento próprio no Firestore (cada imagem no seu documento).
+    const id = 'tema_img_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    await setDoc(doc(db, 'config', id), { data: dataUrl, criadoEm: Date.now() });
+    cacheImagensTema.set(id, dataUrl);
+    return 'cfgimg:' + id;
+}
+
 window.salvarTema = async function() {
     const ed = window.__temaEdicao;
     const nome = String(document.getElementById('tema-nome')?.value || '').trim();
     if (!nome) return window.showToast('Dê um nome ao tema.', true);
     const btn = document.getElementById('btn-salvar-tema');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...'; }
+    let etapa = 'imagens';
     try {
+        const anterior = temasLista.find(x => x.id === ed.id) || {};
         const imgs = { ...ed.imgs };
         for (const [campo, file] of Object.entries(ed.arquivos)) {
-            const url = await upImg(file);
-            if (url) imgs[campo] = url;
+            imgs[campo] = await enviarImagemTema(file);
         }
+        etapa = 'tema';
         const dados = {
+            id: ed.id || gerarIdTema(),
             nome,
             bg: document.getElementById('tema-bg').value,
             card: document.getElementById('tema-card').value,
             txt: document.getElementById('tema-txt').value,
             acc: document.getElementById('tema-acc').value,
+            ordem: anterior.ordem || Date.now(),
             ...imgs
         };
-        if (ed.id) await updateDoc(doc(db, 'temas', ed.id), dados);
-        else await addDoc(collection(db, 'temas'), { ...dados, ordem: Date.now() });
+        const idx = temasLista.findIndex(x => x.id === dados.id);
+        if (idx > -1) temasLista[idx] = dados; else temasLista.push(dados);
+        await salvarListaTemas();
         // Se o tema editado é o que está no ar, atualiza o site também.
-        if (ed.id && ed.id === temaAtivoId) await setDoc(doc(db, 'config', 'tema'), { ...dadosPublicosTema(dados), temaAtivoId: ed.id, aplicadoEm: Date.now() });
+        if (dados.id === temaAtivoId) { etapa = 'site'; await publicarTemaNoSite(dados); }
+        await apagarImagensSemUsoTema(CHAVES_IMG_TEMA.map(k => anterior[k]));
         window.closeModal('modal-editor-tema');
         window.showToast('Tema salvo!');
         carregarTemas();
     } catch (e) {
         console.error(e);
-        customAlert('Erro ao salvar o tema.', 'Erro');
+        const motivo = e?.code === 'permission-denied'
+            ? 'sem permissão no banco de dados (confira as regras do Firestore para a coleção "config")'
+            : (e?.message || e?.code || 'erro desconhecido');
+        customAlert(`Erro ao salvar o tema (${etapa === 'imagens' ? 'enviando as imagens' : etapa === 'site' ? 'publicando no site' : 'gravando o tema'}): ${motivo}`, 'Erro');
     }
     if (btn) { btn.disabled = false; btn.innerHTML = 'Salvar tema'; }
 };
@@ -12507,7 +12868,7 @@ window.renderPedidosApagados = function() {
 window.restaurarPedidoApagado = async function(docId) {
     const p = (window.todosPedidos || []).find(x => x._docId === docId);
     if (!p) return;
-    let idRestaurado = p.idOriginal || String(p.ID_do_Pedido || '').replace(/^EX[CD]-/i, '');
+    let idRestaurado = p.idOriginal || String(p.ID_do_Pedido || '').replace(/^(EX[CD]|CXD)-/i, '');
     if ((window.todosPedidos || []).some(x => x !== p && x.ID_do_Pedido === idRestaurado && !isPedidoExcluidoPainel(x))) idRestaurado = docId;
     window.mostrarLoading(true);
     try {
@@ -12525,3 +12886,427 @@ window.restaurarPedidoApagado = async function(docId) {
     }
     window.mostrarLoading(false);
 };
+
+
+// =====================================================================
+// PACOTE 2026-10-15 — ajustes do retorno de testes
+// =====================================================================
+
+// ---------- GASTOS: botão "Produtos" (igual ao de Marcas) ----------
+function listaItensGastoComUso() {
+    const usos = {};
+    (allGastosLancamentos || []).forEach(l => { if (l.itemId) usos[l.itemId] = (usos[l.itemId] || 0) + 1; });
+    return [...(allGastosItens || [])]
+        .map(i => ({ id: i.id, nome: String(i.nome || '').trim(), usos: usos[i.id] || 0 }))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
+window.abrirModalProdutosGasto = function() {
+    let modal = document.getElementById('modal-produtos-gasto');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-produtos-gasto';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:520px; border:2px solid var(--favu-rust);">
+                <div class="modal-header"><h3 style="color:var(--favu-rust);">Produtos</h3><button class="close-modal" onclick="window.closeModal('modal-produtos-gasto')">&times;</button></div>
+                <div class="modal-body">
+                    <input type="text" id="busca-produtos-gasto" class="search-bar" placeholder="Buscar produto..." oninput="window.renderListaProdutosGasto()" style="margin:0;">
+                    <div id="lista-produtos-gasto" class="marcas-gasto-lista"></div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    const busca = document.getElementById('busca-produtos-gasto');
+    if (busca) busca.value = '';
+    window.renderListaProdutosGasto();
+    window.openModal('modal-produtos-gasto');
+};
+
+window.renderListaProdutosGasto = function() {
+    const box = document.getElementById('lista-produtos-gasto');
+    if (!box) return;
+    const termo = normalizarBuscaGasto(document.getElementById('busca-produtos-gasto')?.value || '');
+    const itens = listaItensGastoComUso().filter(i => !termo || normalizarBuscaGasto(i.nome).includes(termo));
+    window.__produtosGastoLista = itens;
+    box.innerHTML = itens.length ? itens.map((it, i) => `
+        <div class="marca-gasto-row">
+            <div><input type="text" value="${escapeHTMLGasto(it.nome)}" class="marca-gasto-nome-input" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.renomearProdutoGasto(${i}, this.value);}"><small>${it.usos} lançamento(s)</small></div>
+            <button type="button" class="btn-action edit" title="Salvar novo nome" onclick="window.renomearProdutoGasto(${i}, this.closest('.marca-gasto-row').querySelector('input').value)"><i class="fas fa-check"></i></button>
+            <button type="button" class="btn-action del" title="Excluir" onclick="window.excluirProdutoGastoLista(${i})"><i class="fas fa-trash"></i></button>
+        </div>`).join('') : '<small style="color:#999;">Nenhum produto encontrado.</small>';
+};
+
+window.renomearProdutoGasto = async function(idx, novoNomeBruto) {
+    const item = (window.__produtosGastoLista || [])[idx];
+    const novoNome = String(novoNomeBruto || '').trim();
+    if (!item || !novoNome) return window.showToast('Informe o novo nome do produto.', true);
+    if (novoNome === item.nome) return window.showToast('O nome não mudou.');
+    const existente = listaItensGastoComUso().find(i => i.id !== item.id && normalizarBuscaGasto(i.nome) === normalizarBuscaGasto(novoNome));
+
+    const executar = async () => {
+        window.mostrarLoading?.(true);
+        try {
+            const vinculados = allGastosLancamentos.filter(l => l.itemId === item.id);
+            if (existente) {
+                // Juntar: os lançamentos passam para o produto que já existe.
+                await Promise.all(vinculados.map(l => updateDoc(doc(db, 'gastos_lancamentos', l.id), { itemId: existente.id, itemNome: existente.nome, updatedAt: Date.now() })));
+                await deleteDoc(doc(db, 'gastos_itens', item.id));
+            } else {
+                await updateDoc(doc(db, 'gastos_itens', item.id), { nome: novoNome, updatedAt: Date.now() });
+                await Promise.all(vinculados.map(l => updateDoc(doc(db, 'gastos_lancamentos', l.id), { itemNome: novoNome, updatedAt: Date.now() })));
+            }
+            window.showToast(existente ? 'Produtos juntados!' : 'Produto atualizado!');
+            setTimeout(() => window.renderListaProdutosGasto(), 500);
+        } catch (e) {
+            console.error(e);
+            window.showToast('Erro ao renomear produto.', true);
+        }
+        window.mostrarLoading?.(false);
+    };
+    if (existente) customConfirm(`Já existe o produto "${existente.nome}". Juntar "${item.nome}" com ele? Os ${allGastosLancamentos.filter(l => l.itemId === item.id).length} lançamento(s) passam para "${existente.nome}".`, executar);
+    else executar();
+};
+
+window.excluirProdutoGastoLista = function(idx) {
+    const item = (window.__produtosGastoLista || [])[idx];
+    if (!item) return;
+    if (item.usos > 0) return customAlert(`"${item.nome}" tem ${item.usos} lançamento(s). Para excluir, renomeie para juntar com outro produto ou apague os lançamentos antes.`, 'Atenção');
+    customConfirm(`Excluir o produto "${item.nome}"?`, async () => {
+        try { await deleteDoc(doc(db, 'gastos_itens', item.id)); window.showToast('Produto excluído.'); }
+        catch (e) { console.error(e); window.showToast('Erro ao excluir produto.', true); }
+        setTimeout(() => window.renderListaProdutosGasto(), 500);
+    });
+};
+
+// ---------- GASTOS: local com a tag embaixo do nome (num bloco só) ----------
+window.formatarLocalComTagGasto = function(localCompra) {
+    const texto = String(localCompra || '').trim();
+    if (!texto) return '-';
+    const m = texto.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    if (!m || !m[1].trim()) return escapeHTMLGasto(texto);
+    return `<span class="gasto-local-wrap"><span class="gasto-local-principal">${escapeHTMLGasto(m[1].trim())}</span><span class="gasto-local-tag">${escapeHTMLGasto(m[2].trim())}</span></span>`;
+};
+
+// ---------- GASTOS no celular: rolagem, item igual aos outros dados, total ----------
+const MOBILE_GASTOS = () => window.innerWidth <= 900;
+
+function liberarRolagemGastosMobile() {
+    const pane = document.getElementById('t-gastos');
+    if (!pane) return;
+    const alvos = new Set();
+    ['gastos-planilha-body', 'gastos-lancamentos-lista-body'].forEach(id => {
+        let el = document.getElementById(id);
+        while (el && el !== pane && el !== document.body) { alvos.add(el); el = el.parentElement; }
+    });
+    alvos.forEach(el => {
+        if (MOBILE_GASTOS()) {
+            const cs = getComputedStyle(el);
+            const rola = /(auto|scroll)/.test(cs.overflowY) || /(auto|scroll)/.test(cs.overflow) || (cs.maxHeight && cs.maxHeight !== 'none');
+            if (rola || el.tagName === 'TBODY') {
+                el.dataset.rolagemLiberada = '1';
+                el.style.setProperty('overflow', 'visible', 'important');
+                el.style.setProperty('max-height', 'none', 'important');
+                el.style.setProperty('height', 'auto', 'important');
+                el.style.setProperty('touch-action', 'pan-y', 'important');
+            }
+        } else if (el.dataset.rolagemLiberada) {
+            delete el.dataset.rolagemLiberada;
+            ['overflow', 'max-height', 'height', 'touch-action'].forEach(pr => el.style.removeProperty(pr));
+        }
+    });
+}
+
+// Copia o visual de uma célula "normal" (ex.: Marca) para a célula de Item no celular,
+// para o item aparecer à direita com o rótulo à esquerda, igual aos outros dados.
+function espelharEstiloGastosMobile() {
+    let tag = document.getElementById('estilo-gastos-espelho');
+    if (!tag) { tag = document.createElement('style'); tag.id = 'estilo-gastos-espelho'; document.head.appendChild(tag); }
+    if (!MOBILE_GASTOS()) { tag.textContent = ''; return; }
+    let css = '';
+    const modelo = document.querySelector('#gastos-lancamentos-lista-body td[data-label="Marca:"]');
+    if (modelo) {
+        const cs = getComputedStyle(modelo);
+        const bf = getComputedStyle(modelo, '::before');
+        const props = ['display', 'justify-content', 'align-items', 'text-align', 'padding', 'border-bottom', 'font-size', 'font-family', 'font-weight', 'color', 'background-color', 'text-transform', 'gap', 'flex-direction'];
+        const propsBf = ['display', 'font-size', 'font-family', 'font-weight', 'color', 'text-transform', 'text-align', 'margin', 'padding', 'flex', 'letter-spacing'];
+        const temRotulo = !/^(none|normal)$/.test(bf.getPropertyValue('content'));
+        css += `#gastos-lancamentos-lista-body td[data-label="Item:"]{${props.map(p => `${p}:${cs.getPropertyValue(p)} !important;`).join('')}grid-column:auto !important; width:auto !important;}`;
+        css += `#gastos-lancamentos-lista-body td[data-label="Item:"]::before{${temRotulo ? 'content:attr(data-label) !important;' : 'content:none !important;'}${propsBf.map(p => `${p}:${bf.getPropertyValue(p)} !important;`).join('')}}`;
+    }
+    // Total da Tabela com o mesmo estilo do total da Lista.
+    const totLista = document.querySelectorAll('#gastos-lancamentos-lista-body tr.gastos-lancamentos-total-row td');
+    if (totLista.length >= 2) {
+        const props = ['background-color', 'color', 'font-size', 'font-family', 'font-weight', 'text-transform', 'padding', 'border-top', 'border-bottom', 'text-align', 'letter-spacing'];
+        const trCs = getComputedStyle(totLista[0].parentElement);
+        const a = getComputedStyle(totLista[0]), b = getComputedStyle(totLista[1]);
+        css += `#gastos-painel-resumo tr.gastos-total-mobile{${['background-color', 'box-shadow', 'border-radius'].map(p => `${p}:${trCs.getPropertyValue(p)} !important;`).join('')}}`;
+        css += `#gastos-painel-resumo tr.gastos-total-mobile td.gtm-label{${props.map(p => `${p}:${a.getPropertyValue(p)} !important;`).join('')}}`;
+        css += `#gastos-painel-resumo tr.gastos-total-mobile td.gtm-valor{${props.map(p => `${p}:${b.getPropertyValue(p)} !important;`).join('')}}`;
+    }
+    tag.textContent = css;
+}
+
+function ajustarTotalTabelaGastosMobile() {
+    const body = document.getElementById('gastos-planilha-body');
+    if (!body) return;
+    body.querySelectorAll('tr.gastos-total-mobile').forEach(tr => tr.remove());
+    const totalRow = body.querySelector('tr.gastos-rebuild-total-row');
+    if (!totalRow) return;
+    if (!MOBILE_GASTOS()) { totalRow.style.display = ''; return; }
+    const mes = Number(document.getElementById('gastos-mes-filtro')?.value) || (new Date().getMonth() + 1);
+    const celMes = totalRow.querySelectorAll('td.gastos-rebuild-month-cell')[mes - 1];
+    const valor = celMes ? celMes.textContent.trim() : '';
+    const nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    totalRow.style.display = 'none';
+    totalRow.insertAdjacentHTML('afterend', `<tr class="gastos-total-mobile gastos-lancamentos-total-row"><td class="gtm-label">TOTAL DE ${nomes[mes - 1].toUpperCase()}</td><td class="gtm-valor"><strong>${valor}</strong></td></tr>`);
+}
+
+function aposRenderGastos() {
+    try { liberarRolagemGastosMobile(); } catch (e) {}
+    try { if (MOBILE_GASTOS() && !document.querySelector('#gastos-lancamentos-lista-body tr')) window.renderGastosLancamentosLista?.(); } catch (e) {}
+    try { espelharEstiloGastosMobile(); } catch (e) {}
+    try { ajustarTotalTabelaGastosMobile(); } catch (e) {}
+}
+
+const renderGastosPlanilhaPacoteOriginal = window.renderGastosPlanilha;
+window.renderGastosPlanilha = function(...args) {
+    const r = renderGastosPlanilhaPacoteOriginal.apply(this, args);
+    setTimeout(aposRenderGastos, 90);
+    return r;
+};
+const renderGastosListaPacoteOriginal = window.renderGastosLancamentosLista;
+window.renderGastosLancamentosLista = function(...args) {
+    const r = renderGastosListaPacoteOriginal.apply(this, args);
+    setTimeout(() => { try { liberarRolagemGastosMobile(); espelharEstiloGastosMobile(); } catch (e) {} }, 90);
+    return r;
+};
+document.addEventListener('change', (e) => { if (e.target?.id === 'gastos-mes-filtro') setTimeout(ajustarTotalTabelaGastosMobile, 120); });
+window.addEventListener('resize', () => { clearTimeout(window.__gastosResizeT); window.__gastosResizeT = setTimeout(aposRenderGastos, 250); });
+
+// ---------- ORÇAMENTO: período de retirada das categorias ----------
+function formatarDataBRIso(iso) {
+    const [a, m, d] = String(iso || '').split('-');
+    return a && m && d ? `${d}/${m}/${a}` : '';
+}
+function descreverPeriodoMensagemRetirada(ini, fim) {
+    const i = formatarDataBRIso(ini), f = formatarDataBRIso(fim);
+    if (i && f) return i === f ? `no dia ${i}` : `no período de ${i} - ${f}`;
+    if (i) return `a partir de ${i}`;
+    if (f) return `até ${f}`;
+    return '';
+}
+function mensagemRetiradaCategoriaAdmin(c) {
+    if (!c || !(c.entregaInicioData || c.entregaFimData)) return '';
+    if (c.entregaMensagem && String(c.entregaMensagem).trim()) return String(c.entregaMensagem).trim();
+    return `Pedidos contendo os itens da categoria ${c.nome} só são permitidos para retirada ${descreverPeriodoMensagemRetirada(c.entregaInicioData, c.entregaFimData)}.`;
+}
+window.calcularJanelaRetiradaOrcamento = function() {
+    const cats = new Map();
+    allProducts.forEach(p => {
+        if (!(orcQtdState[p.id] > 0)) return;
+        const c = globalCategories.find(x => x.nome === (p.categoria || ''));
+        if (c && (c.entregaInicioData || c.entregaFimData)) cats.set(c.nome, c);
+    });
+    const lista = [...cats.values()];
+    let inicio = '', fim = '';
+    lista.forEach(c => {
+        if (c.entregaInicioData && (!inicio || c.entregaInicioData > inicio)) inicio = c.entregaInicioData;
+        if (c.entregaFimData && (!fim || c.entregaFimData < fim)) fim = c.entregaFimData;
+    });
+    const mensagem = lista.length === 1 ? mensagemRetiradaCategoriaAdmin(lista[0])
+        : lista.length ? `Pedidos contendo os itens das categorias ${lista.map(c => c.nome).join(', ')} só são permitidos para retirada ${descreverPeriodoMensagemRetirada(inicio, fim)}.` : '';
+    return { restrita: lista.length > 0, inicio, fim, mensagem };
+};
+function atualizarAvisoJanelaOrcamento() {
+    const inputData = document.getElementById('orc-data');
+    if (!inputData) return;
+    let aviso = document.getElementById('aviso-janela-orc');
+    if (!aviso) {
+        aviso = document.createElement('div');
+        aviso.id = 'aviso-janela-orc';
+        aviso.className = 'aviso-janela-retirada';
+        inputData.insertAdjacentElement('afterend', aviso);
+    }
+    const j = window.calcularJanelaRetiradaOrcamento();
+    const dt = inputData.value;
+    const fora = j.restrita && dt && ((j.inicio && dt < j.inicio) || (j.fim && dt > j.fim));
+    aviso.innerHTML = j.restrita ? `<i class="fa-regular fa-calendar"></i> ${escapeHtmlPedido(j.mensagem)}${fora ? '<br><strong style="color:#E60000;">A data escolhida está fora desse período.</strong>' : ''}` : '';
+    aviso.style.display = j.restrita ? 'block' : 'none';
+    aviso.classList.toggle('fora', !!fora);
+}
+document.addEventListener('change', (e) => { if (e.target?.id === 'orc-data') atualizarAvisoJanelaOrcamento(); });
+const avancarDadosClientePacoteOriginal = window.avancarDadosCliente;
+window.avancarDadosCliente = function(...args) {
+    const r = avancarDadosClientePacoteOriginal.apply(this, args);
+    setTimeout(atualizarAvisoJanelaOrcamento, 350);
+    return r;
+};
+
+// ---------- CATEGORIA: campo "Mensagem exibida no site" do período de retirada ----------
+window.garantirCampoMensagemRetirada = function(prefix) {
+    if (document.getElementById(`${prefix}-entmsg`)) return;
+    const fim = document.getElementById(`${prefix}-entfim`);
+    if (!fim) return;
+    const bloco = fim.closest('.form-grid') || fim.parentElement;
+    const wrap = document.createElement('div');
+    wrap.className = 'campo-msg-retirada';
+    wrap.innerHTML = `<label for="${prefix}-entmsg">Mensagem exibida no site</label>
+        <textarea id="${prefix}-entmsg" rows="2" placeholder="Em branco: Pedidos contendo os itens da categoria X só são permitidos para retirada no período de DD/MM/AAAA - DD/MM/AAAA."></textarea>`;
+    bloco.insertAdjacentElement('afterend', wrap);
+};
+
+// ---------- Ajustes de interface do painel ----------
+function ajustarInterfacePainel() {
+    // Botão "Apagados": os pedidos apagados ficam só no banco de dados.
+    document.querySelectorAll('[onclick*="abrirModalPedidosApagados"]').forEach(el => { el.style.display = 'none'; });
+
+    // Texto "O resumo enviado no pedido é montado sozinho..." nos formulários de produto.
+    document.querySelectorAll('form small, form p, form span, form div, form label, .modal small, .modal p, .modal label').forEach(el => {
+        if (el.dataset.ocultoResumo || el.children.length > 2) return;
+        const t = el.textContent || '';
+        if (t.length < 260 && /montado sozinho/i.test(t)) { el.style.display = 'none'; el.dataset.ocultoResumo = '1'; }
+    });
+
+    // Gastos: sai o botão "Adicionar item" (os itens são criados no "Lançar gastos")
+    // e entra o botão "Produtos" ao lado de "Marcas".
+    document.querySelectorAll('button, a').forEach(el => {
+        const oc = (el.getAttribute('onclick') || '').replace(/\s/g, '');
+        if (/adicionarItemGasto\(\)|openGastoItemModal\((''|"")?\)/.test(oc)) el.style.display = 'none';
+    });
+    const btnMarcas = document.querySelector('[onclick*="abrirModalMarcasGasto"]');
+    if (btnMarcas && !document.getElementById('btn-produtos-gasto')) {
+        const btn = btnMarcas.cloneNode(true);
+        btn.id = 'btn-produtos-gasto';
+        btn.setAttribute('onclick', 'window.abrirModalProdutosGasto()');
+        const icone = btn.querySelector('i');
+        btn.textContent = ' Produtos';
+        if (icone) { icone.className = 'fas fa-box'; btn.prepend(icone); }
+        btnMarcas.insertAdjacentElement('afterend', btn);
+    }
+
+    window.garantirCampoMensagemRetirada('ac');
+    window.garantirCampoMensagemRetirada('ec');
+}
+window.ajustarInterfacePainel = ajustarInterfacePainel;
+setTimeout(ajustarInterfacePainel, 300);
+setTimeout(ajustarInterfacePainel, 1500);
+new MutationObserver(() => {
+    clearTimeout(window.__ajusteInterfaceT);
+    window.__ajusteInterfaceT = setTimeout(ajustarInterfacePainel, 300);
+}).observe(document.body, { childList: true, subtree: true });
+
+// ---------- CSS do pacote ----------
+(function injetarCssPacote() {
+    if (document.getElementById('css-pacote-20261015')) return;
+    const st = document.createElement('style');
+    st.id = 'css-pacote-20261015';
+    st.textContent = `
+/* A3: item travado na edição do pedido */
+.edit-item-row.edit-item-row-travado { outline: 2px solid #E60000; outline-offset: 2px; border-radius: 10px; }
+.edit-item-travado-nome { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; min-height:38px; padding:8px 10px; border:1px solid #E60000; border-radius:8px; background:#fff5f5; color:#8a0000; font-size:0.9rem; cursor:not-allowed; }
+.edit-item-travado-nome i { font-size:0.8rem; opacity:.7; }
+
+/* Avisos de período de retirada */
+.aviso-janela-retirada { margin:6px 0 10px; padding:10px 12px; border-radius:10px; font-size:0.85rem; line-height:1.35; text-align:left; color:#1D2814; background:rgba(224,159,65,0.12); border:1px solid rgba(224,159,65,0.35); }
+.aviso-janela-retirada.fora { border-color:#E60000; background:#fff5f5; }
+.campo-msg-retirada { margin-top:10px; }
+.campo-msg-retirada textarea { width:100%; min-height:56px; }
+
+/* C12: produtos em cartões no celular */
+#tbl-produtos.tbl-produtos-cartoes thead { display:none !important; }
+#tbl-produtos.tbl-produtos-cartoes, #tbl-produtos.tbl-produtos-cartoes tbody { display:block !important; width:100% !important; }
+#tbl-produtos tr.prod-card-row { display:block !important; border:none !important; background:transparent !important; box-shadow:none !important; padding:0 !important; margin:0 !important; }
+#tbl-produtos tr.prod-card-row > td { display:block !important; padding:0 !important; border:none !important; width:100% !important; text-align:left !important; }
+#tbl-produtos tr.prod-card-row > td::before { content:none !important; display:none !important; }
+.prod-card-mobile { position:relative; background:#fff; border-radius:16px; padding:18px 16px 14px; margin:0 0 14px; box-shadow:0 4px 15px rgba(29,40,20,0.08); border:1px solid rgba(224,159,65,0.2); }
+.prod-card-mobile .prod-card-check { position:absolute; top:12px; right:12px; width:20px; height:20px; margin:0; z-index:3; accent-color:#E09F41; opacity:.85; }
+.prod-card-foto { display:flex; justify-content:center; margin:4px 0 12px; }
+.prod-card-foto .admin-auto-carousel, .prod-card-foto .admin-auto-carousel-empty { width:190px !important; height:190px !important; max-width:100%; margin:0 auto; border-radius:14px; overflow:hidden; position:relative; }
+.prod-card-foto .admin-auto-carousel img { width:100% !important; height:100% !important; object-fit:cover; }
+.prod-card-sem-foto { width:130px; height:130px; border-radius:14px; background:#f1f1f1; color:#ccc; font-size:2.2rem; display:flex; align-items:center; justify-content:center; }
+.prod-card-nome { text-align:center; color:var(--favu-rust, #E09F41); font-family:'Basic Choice', var(--font-display, cursive); font-size:1.3rem; line-height:1.2; text-transform:uppercase; }
+.prod-card-desc { text-align:center; color:#46493A; font-size:0.8rem; margin-top:4px; }
+.prod-card-tams { margin:12px 0 6px; border-top:1px solid rgba(224,159,65,0.35); }
+.prod-card-tam { display:flex; justify-content:space-between; align-items:center; padding:9px 4px; border-bottom:1px dashed rgba(224,159,65,0.3); font-size:0.95rem; color:#1D2814; }
+.prod-card-tam-preco { font-weight:600; }
+.prod-card-tam-oculto { font-size:0.7rem; color:#999; border:1px solid #ddd; border-radius:8px; padding:0 6px; margin-left:6px; }
+.prod-card-linha { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 4px; font-size:0.85rem; text-align:right; border-bottom:1px dashed rgba(224,159,65,0.2); }
+.prod-card-linha > span:first-child { color:var(--favu-rust, #E09F41); font-family:'Basic Choice', var(--font-display, cursive); text-transform:uppercase; text-align:left; white-space:nowrap; }
+.prod-card-acoes { display:flex; justify-content:center !important; gap:10px; margin-top:12px; }
+
+/* F3: arrastar fotos do carrossel */
+#galeria-preview .carrossel-item { cursor:grab; touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; transition:opacity .15s; }
+#galeria-preview .carrossel-item img { pointer-events:none; -webkit-user-drag:none; }
+#galeria-preview .carrossel-item.carrossel-arrastando { opacity:.3; }
+.carrossel-fantasma { position:fixed !important; z-index:99999; pointer-events:none; opacity:.92; transform:scale(1.06); box-shadow:0 12px 30px rgba(0,0,0,.25); margin:0 !important; border-radius:12px; overflow:hidden; }
+.carrossel-item-alca { cursor:grab; opacity:.7; padding:0 4px; }
+.carrossel-item-barra { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+
+/* Gastos: local + tag embaixo, num bloco só */
+.gasto-local-wrap { display:inline-flex; flex-direction:column; align-items:inherit; gap:2px; }
+@media (max-width: 900px) {
+    .gasto-local-wrap { align-items:flex-end; text-align:right; }
+    .gasto-local-wrap .gasto-local-tag { margin-left:0 !important; }
+    #gastos-painel-resumo table thead, #gastos-painel-resumo .gastos-rebuild-table thead { display:none !important; }
+    #t-gastos tbody, #t-gastos tr, #t-gastos td { touch-action:pan-y; }
+}
+@media (min-width: 901px) { .gasto-local-wrap { align-items:flex-start; } }
+
+/* I3/I4: orçamento com o mesmo visual do cardápio dos clientes */
+#orc-cats-nav { display:flex !important; flex-wrap:nowrap !important; overflow-x:auto !important; overflow-y:hidden !important; gap:10px !important; padding:12px 15px !important; justify-content:flex-start !important; align-items:center !important; scrollbar-width:none; -webkit-overflow-scrolling:touch; cursor:grab; }
+#orc-cats-nav::-webkit-scrollbar { display:none; }
+#orc-cats-nav a.categoria-btn-orc { flex:0 0 auto !important; display:inline-flex !important; align-items:center; justify-content:center; height:auto !important; padding:6px 18px !important; margin:0 !important; background:#fff !important; color:#1D2814 !important; border-radius:30px !important; border:1px solid rgba(224,159,65,0.3) !important; box-shadow:0 4px 10px rgba(0,0,0,0.05) !important; font-family:'Basic Choice', var(--font-display, cursive) !important; font-size:0.95rem !important; font-weight:normal !important; line-height:1.3 !important; letter-spacing:normal !important; text-transform:uppercase !important; text-decoration:none !important; white-space:nowrap !important; }
+#orc-cats-nav a.categoria-btn-orc.active-link { background:#E09F41 !important; color:#fff !important; border-color:#E09F41 !important; box-shadow:0 4px 15px rgba(224,159,65,0.3) !important; }
+#orc-menu-container .categoria-title-orc { font-family:'Basic Choice', var(--font-display, cursive) !important; font-size:3rem !important; font-weight:normal !important; color:#E09F41 !important; text-align:center !important; margin:5px auto 25px !important; letter-spacing:normal !important; }
+#orc-menu-container .table-card-orc { background:#FFF5EB !important; border-radius:16px !important; padding:25px 35px !important; max-width:850px !important; width:100% !important; margin:0 auto 20px !important; box-shadow:0 4px 15px rgba(29,40,20,0.08) !important; border:1px solid rgba(255,255,255,0.5) !important; overflow:hidden !important; }
+#orc-menu-container table.orc-table { display:table !important; width:100% !important; border-collapse:collapse !important; table-layout:fixed !important; background:transparent !important; }
+#orc-menu-container table.orc-table caption { display:none !important; }
+#orc-menu-container table.orc-table thead { display:table-header-group !important; }
+#orc-menu-container table.orc-table tbody { display:table-row-group !important; }
+#orc-menu-container table.orc-table tr { display:table-row !important; border:none; border-bottom:1px dashed rgba(224,159,65,0.2) !important; background:transparent !important; box-shadow:none !important; }
+#orc-menu-container table.orc-table tr.group-separator { border-bottom:2px solid rgba(224,159,65,0.4) !important; }
+#orc-menu-container table.orc-table tbody tr:last-child { border-bottom:none !important; }
+#orc-menu-container table.orc-table th { display:table-cell !important; position:static !important; background:transparent !important; border:none !important; border-bottom:2px solid rgba(29,40,20,0.2) !important; font-family:'Basic Choice', var(--font-display, cursive) !important; color:#1D2814 !important; font-size:0.95rem !important; font-weight:normal !important; text-transform:uppercase !important; text-align:center !important; padding:0 5px 10px !important; letter-spacing:normal !important; }
+#orc-menu-container table.orc-table td:not([style*="display:none"]):not([style*="display: none"]) { display:table-cell !important; }
+#orc-menu-container table.orc-table td { border:none !important; background:transparent !important; padding:12px 5px !important; vertical-align:middle !important; color:#1D2814 !important; font-size:0.9rem !important; font-weight:normal !important; font-family:'Basic Choice', var(--font-display, cursive) !important; text-align:center !important; }
+#orc-menu-container table.orc-table td::before { content:none !important; display:none !important; }
+#orc-menu-container table.orc-table th.col-item, #orc-menu-container table.orc-table td.col-item { width:35% !important; text-align:left !important; padding-left:5px !important; }
+#orc-menu-container table.orc-table td.col-item { font-size:1.05rem !important; text-transform:uppercase !important; padding-right:15px !important; word-wrap:break-word; }
+#orc-menu-container table.orc-table th.col-icon, #orc-menu-container table.orc-table td.col-icon { width:5% !important; }
+#orc-menu-container table.orc-table th.col-sec, #orc-menu-container table.orc-table td.col-sec,
+#orc-menu-container table.orc-table th.col-unid, #orc-menu-container table.orc-table td.col-unid,
+#orc-menu-container table.orc-table th.col-qtd, #orc-menu-container table.orc-table td.col-qtd { width:19.6% !important; }
+#orc-menu-container table.orc-table td.col-sec, #orc-menu-container table.orc-table td.col-unid, #orc-menu-container table.orc-table td.col-qtd,
+#orc-menu-container .descricao, #orc-menu-container input[type="number"], #orc-menu-container .info-box, #orc-menu-container .info-box-content { font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
+#orc-menu-container .descricao { font-size:0.75rem !important; color:#46493A !important; margin-top:4px !important; text-transform:none !important; text-align:left !important; line-height:1.3 !important; }
+#orc-menu-container .peso-mobile { display:block !important; white-space:nowrap; font-size:0.75rem !important; margin-top:2px; color:#46493A !important; }
+#orc-menu-container .quantidade-input-group { display:flex !important; align-items:center; justify-content:center; gap:5px; }
+#orc-menu-container .qtd-btn-table { width:25px !important; height:30px !important; border:none !important; background:none !important; color:#E09F41 !important; font-size:1.1rem !important; font-weight:bold !important; padding:0 !important; box-shadow:none !important; }
+#orc-menu-container input[type="number"] { width:36px !important; height:28px !important; padding:0 !important; text-align:center !important; border:1px solid #ddd !important; border-radius:6px !important; background:#fff !important; font-size:0.95rem !important; color:#1D2814 !important; }
+#orc-menu-container .info-box { background:rgba(224,159,65,0.1) !important; border:none !important; border-top:2px solid rgba(224,159,65,0.2) !important; padding:15px !important; margin:15px auto 0 !important; border-radius:12px !important; max-width:850px; text-align:left; }
+#orc-menu-container .foto-hint { color:#E09F41; opacity:.65; font-size:0.95rem; }
+#orc-menu-container .th-mobile { display:none !important; } #orc-menu-container .th-desktop { display:inline !important; }
+@media (max-width: 600px) {
+    #orc-cats-nav a.categoria-btn-orc { font-size:1rem !important; }
+    #orc-menu-container .categoria-title-orc { font-size:2.6rem !important; }
+    #orc-menu-container .table-card-orc { padding:15px 10px !important; }
+    #orc-menu-container .th-mobile { display:inline !important; } #orc-menu-container .th-desktop { display:none !important; }
+    #orc-menu-container table.orc-table th { font-size:1rem !important; padding-bottom:12px !important; }
+    #orc-menu-container table.orc-table td { font-size:0.95rem !important; }
+    #orc-menu-container table.orc-table td.col-item { font-size:1.1rem !important; padding-right:4px !important; }
+    #orc-menu-container table.orc-table th.col-item, #orc-menu-container table.orc-table td.col-item { width:auto !important; }
+    #orc-menu-container table.orc-table th.col-icon, #orc-menu-container table.orc-table td.col-icon { width:20px !important; padding:0 !important; }
+    #orc-menu-container table.orc-table th.col-sec, #orc-menu-container table.orc-table td.col-sec { width:45px !important; padding:0 !important; }
+    #orc-menu-container table.orc-table th.col-unid, #orc-menu-container table.orc-table td.col-unid { width:55px !important; padding:12px 0 !important; line-height:1.2; }
+    #orc-menu-container table.orc-table td.col-unid .moeda { display:block; font-size:0.75rem; color:#46493A; margin-bottom:1px; }
+    #orc-menu-container table.orc-table td.col-unid .valor { display:block; font-size:0.85rem; }
+    #orc-menu-container table.orc-table th.col-qtd, #orc-menu-container table.orc-table td.col-qtd { width:90px !important; padding:12px 0 !important; }
+    #orc-menu-container .quantidade-input-group { gap:2px; }
+    #orc-menu-container input[type="number"] { width:34px !important; }
+    #orc-menu-container .qtd-btn-table { width:24px !important; font-size:1.3rem !important; }
+    #orc-menu-container .descricao { font-size:0.8rem !important; }
+}
+`;
+    document.head.appendChild(st);
+})();
