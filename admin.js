@@ -1537,11 +1537,7 @@ window.bulkDelete = function(type) {
     if(checkboxes.length === 0) return;
     if (type === 'categorias') {
         const ids = Array.from(checkboxes).map(cb => cb.value);
-        return customConfirm(textoConfirmarApagarCategorias(ids), async () => {
-            const qtd = await apagarCategoriasComProdutos(ids);
-            customAlert(qtd ? `Categorias e ${qtd} produto(s) excluídos!` : "Categorias excluídas!");
-            window.clearSelection(type); syncCats();
-        });
+        return escolherExclusaoCategorias(ids, () => { window.clearSelection(type); syncCats(); });
     }
     customConfirm(`Excluir permanentemente ${checkboxes.length} item(ns)?`, async () => {
         for(let cb of checkboxes) await deleteDoc(doc(db, type, cb.value));
@@ -2388,9 +2384,12 @@ document.getElementById('form-edit-cat').onsubmit = async(e) => {
     const entrega = getCatEntregaFromForm('ec');
     if (!entrega) return;
     const agendar = !!(schedule.inicioData || schedule.inicioHora || schedule.fimData || schedule.fimHora);
+    const idCatEditada = document.getElementById('ec-id').value;
+    const nomeAntigoCat = (globalCategories.find(c => c.id === idCatEditada) || {}).nome || '';
+    const nomeNovoCat = document.getElementById('ec-nome').value.trim();
 
-    await updateDoc(doc(db, "categorias", document.getElementById('ec-id').value), { 
-        nome: document.getElementById('ec-nome').value.trim(), 
+    await updateDoc(doc(db, "categorias", idCatEditada), { 
+        nome: nomeNovoCat, 
         minTotal: parseInt(document.getElementById('ec-min').value)||0, 
         tipoColuna: document.getElementById('ec-col').value, 
         mensagemObs: window.getCatRichText('ec'),
@@ -2398,8 +2397,30 @@ document.getElementById('form-edit-cat').onsubmit = async(e) => {
         ...schedule,
         ...entrega
     });
+    // 2026-10-15: categoria renomeada — os produtos passam para o novo nome (aparecem
+    // na nova categoria). Pedidos antigos não mudam: já guardam a categoria da época.
+    if (nomeAntigoCat && nomeNovoCat && nomeAntigoCat !== nomeNovoCat) {
+        await renomearCategoriaNosVinculos(nomeAntigoCat, nomeNovoCat);
+    }
     customAlert("Categoria Atualizada!"); window.closeModal('modal-editar-cat', 'form-edit-cat'); syncCats(); loadProds();
 };
+async function renomearCategoriaNosVinculos(antigo, novo) {
+    const produtos = allProducts.filter(p => (p.categoria || '') === antigo);
+    await Promise.all(produtos.map(p => updateDoc(doc(db, "produtos", p.id), { categoria: novo })));
+    produtos.forEach(p => { p.categoria = novo; });
+    try {
+        const snap = await getDoc(doc(db, 'config', 'agenda_excecoes'));
+        const regras = snap.exists() ? snap.data() : {};
+        const alteradas = {};
+        Object.entries(regras).forEach(([data, r]) => {
+            if (Array.isArray(r?.categorias) && r.categorias.includes(antigo)) alteradas[data] = { ...r, categorias: r.categorias.map(c => c === antigo ? novo : c) };
+        });
+        if (Object.keys(alteradas).length) {
+            await setDoc(doc(db, 'config', 'agenda_excecoes'), alteradas, { merge: true });
+            Object.assign(window.cacheExcecoesAgenda || {}, alteradas);
+        }
+    } catch (e) { console.warn('Não foi possível atualizar as datas específicas:', e); }
+}
 window.togC = async(id, s) => { 
     const payload = { ativo: s };
     if (s) {
@@ -2441,12 +2462,45 @@ function textoConfirmarApagarCategorias(ids) {
     const alvo = ids.length > 1 ? `as ${ids.length} categorias` : `a categoria "${[...nomes][0] || ''}"`;
     return qtd ? `Excluir ${alvo}? Os ${qtd} produto(s) dela(s) também serão excluídos.` : `Excluir ${alvo}?`;
 }
-window.delC = async(id) => { 
-    customConfirm(textoConfirmarApagarCategorias([id]), async () => { 
-        const qtd = await apagarCategoriasComProdutos([id]);
-        window.showToast(qtd ? `Categoria e ${qtd} produto(s) excluídos.` : 'Categoria excluída.');
-    }); 
-};
+const NOME_SEM_CATEGORIA = 'Sem categoria';
+async function apagarCategoriasMovendoProdutos(ids) {
+    const nomes = new Set(globalCategories.filter(c => ids.includes(c.id)).map(c => c.nome));
+    const produtos = allProducts.filter(p => nomes.has(p.categoria || ''));
+    await Promise.all(produtos.map(p => updateDoc(doc(db, "produtos", p.id), { categoria: NOME_SEM_CATEGORIA, categoriaAnterior: p.categoria || '' })));
+    produtos.forEach(p => { p.categoriaAnterior = p.categoria; p.categoria = NOME_SEM_CATEGORIA; });
+    await Promise.all(ids.map(id => deleteDoc(doc(db, "categorias", id))));
+    globalCategories = globalCategories.filter(c => !ids.includes(c.id));
+    window.renderCatsTable(); window.renderProdsTable?.(); window.renderOrcamentoMenu?.();
+    return produtos.length;
+}
+// Excluir categoria: com itens, pergunta se apaga os itens junto ou se eles vão para
+// "Sem categoria" (não aparecem no site nem no orçamento, mas dá para achar pela busca).
+function escolherExclusaoCategorias(ids, aoTerminar) {
+    const nomes = globalCategories.filter(c => ids.includes(c.id)).map(c => c.nome);
+    const qtd = allProducts.filter(p => nomes.includes(p.categoria || '')).length;
+    if (!qtd) {
+        return customConfirm(textoConfirmarApagarCategorias(ids), async () => { await apagarCategoriasComProdutos(ids); window.showToast('Categoria excluída.'); aoTerminar?.(); });
+    }
+    let m = document.getElementById('modal-excluir-cat');
+    if (!m) { m = document.createElement('div'); m.id = 'modal-excluir-cat'; m.className = 'modal'; document.body.appendChild(m); }
+    const alvo = ids.length > 1 ? `as ${ids.length} categorias` : `a categoria "${escapeHtmlPedido(nomes[0] || '')}"`;
+    m.innerHTML = `<div class="modal-content" style="max-width:460px;">
+        <div class="modal-header"><h3>Excluir categoria</h3><button class="close-modal" onclick="window.closeModal('modal-excluir-cat')">&times;</button></div>
+        <div class="modal-body">
+            <p class="excluir-cat-texto">Você vai excluir ${alvo}, que tem <strong>${qtd} produto(s)</strong>. O que fazer com eles?</p>
+            <div class="excluir-cat-acoes">
+                <button type="button" class="btn btn-danger" id="btn-excat-apagar"><i class="fas fa-trash"></i> Excluir a categoria e os produtos</button>
+                <button type="button" class="btn btn-secondary" id="btn-excat-mover"><i class="fas fa-folder-open"></i> Manter os produtos em "Sem categoria"</button>
+                <button type="button" class="btn btn-outline" onclick="window.closeModal('modal-excluir-cat')">Cancelar</button>
+            </div>
+            <small class="excluir-cat-ajuda">Em "Sem categoria", os produtos não aparecem no site nem no orçamento, mas continuam em Produtos e podem ser achados pela busca.</small>
+        </div>
+    </div>`;
+    m.querySelector('#btn-excat-apagar').onclick = async () => { window.closeModal('modal-excluir-cat'); const n = await apagarCategoriasComProdutos(ids); window.showToast(`Categoria e ${n} produto(s) excluídos.`); aoTerminar?.(); };
+    m.querySelector('#btn-excat-mover').onclick = async () => { window.closeModal('modal-excluir-cat'); const n = await apagarCategoriasMovendoProdutos(ids); window.showToast(`Categoria excluída. ${n} produto(s) em "Sem categoria".`); aoTerminar?.(); };
+    window.openModal('modal-excluir-cat');
+}
+window.delC = async(id) => { escolherExclusaoCategorias([id]); };
 
 
 window.copyCat = async function(id) {
@@ -2692,7 +2746,7 @@ function renderProdTabs() {
     const container = document.getElementById('prod-cats-nav');
     const scrollAnteriorAbas = container ? container.scrollLeft : 0;
     
-    const catsUsed = [...new Set(allProducts.map(p => p.categoria || 'Sem Categoria'))].sort(window.sortAlfabetico);
+    const catsUsed = [...new Set(allProducts.map(p => p.categoria || NOME_SEM_CATEGORIA))].sort(window.sortAlfabetico);
     
     if (!currentCategoryFilter || !catsUsed.includes(currentCategoryFilter)) currentCategoryFilter = catsUsed[0] || '';
     let html = ''; catsUsed.forEach(c => html += `<button class="prod-tab-btn ${currentCategoryFilter === c ? 'active' : ''}" onclick="window.filterProds('${c}')">${c}</button>`);
@@ -2746,7 +2800,7 @@ window.renderProdsTable = function() {
     const searchTerm = document.getElementById('search-prod').value.toLowerCase();
     const tb = document.querySelector("#tbl-produtos tbody"); tb.innerHTML = "";
     
-    let filtered = searchTerm ? allProducts.filter(p => `${p.nome} ${p.categoria} ${p.tamanho||''} ${p.min||1} ${p.preco} ${p.descricaoItem||''} ${p.descricaoResumo||''} ${p.descricaoPopup||''} ${p.ativo?'visível':'oculto'}`.toLowerCase().includes(searchTerm)) : allProducts.filter(p => (p.categoria || 'Sem Categoria') === currentCategoryFilter);
+    let filtered = searchTerm ? allProducts.filter(p => `${p.nome} ${p.categoria} ${p.tamanho||''} ${p.min||1} ${p.preco} ${p.descricaoItem||''} ${p.descricaoResumo||''} ${p.descricaoPopup||''} ${p.ativo?'visível':'oculto'}`.toLowerCase().includes(searchTerm)) : allProducts.filter(p => (p.categoria || NOME_SEM_CATEGORIA) === currentCategoryFilter);
     let chaveAtual = null;
 
     // EMPTY STATE DA TABELA AQUI!
@@ -3343,7 +3397,8 @@ window.renderOrcamentoMenu = function() {
     // 2026-10-15: produto de categoria apagada não aparece (antes a categoria "fantasma" voltava aqui).
     const nomesCategoriasExistentes = new Set((globalCategories || []).map(c => c.nome));
     allProducts
-        .filter(p => p.ativo && nomesCategoriasExistentes.has(p.categoria || '') && isCategoriaDoProdutoVisivel(p))
+        // 2026-10-15: categoria oculta aparece só aqui no orçamento (o site não mostra).
+        .filter(p => p.ativo && nomesCategoriasExistentes.has(p.categoria || ''))
         .filter(p => {
             if (!termoNormalizado) return true;
             return [p.nome, p.categoria, p.tamanho, p.descricaoItem, p.descricaoResumo, p.descricaoPopup]
@@ -3360,7 +3415,9 @@ window.renderOrcamentoMenu = function() {
     
     categoriasOrdenadas.forEach(c => {
         const idGrupo = `orc-grupo-${c.toLowerCase().replace(/\s/g, '-')}`;
-        nav.innerHTML += `<a href="#${idGrupo}" class="categoria-btn-orc ${currentOrcCatFilter === c ? 'active-link' : ''}" data-target="${idGrupo}" onclick="event.preventDefault(); window.filterOrc('${c}')">${c}</a>`;
+        const catObjOrc = globalCategories.find(x => x.nome === c);
+        const ocultaOrc = catObjOrc && !isCategoriaVisivelAgora(catObjOrc);
+        nav.innerHTML += `<a href="#${idGrupo}" class="categoria-btn-orc ${currentOrcCatFilter === c ? 'active-link' : ''} ${ocultaOrc ? 'cat-oculta-orc' : ''}" title="${ocultaOrc ? 'Categoria oculta no site (aparece só no orçamento)' : ''}" data-target="${idGrupo}" onclick="event.preventDefault(); window.filterOrc('${c}')">${ocultaOrc ? '<i class="fas fa-eye-slash"></i>&nbsp;' : ''}${c}</a>`;
     });
 
     // Construtor inteligente de tabelas para manter o visual limpo
@@ -12769,13 +12826,29 @@ function gerarIdTema() {
 
 async function salvarListaTemas() {
     const lista = temasLista.map(t => {
-        const limpo = { id: t.id, nome: t.nome || 'Tema', ordem: t.ordem || 0 };
+        const limpo = { id: t.id, nome: t.nome || 'Tema', ordem: t.ordem || 0, agendaInicio: t.agendaInicio || '', agendaFim: t.agendaFim || '' };
         CHAVES_COR_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         CHAVES_IMG_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         return limpo;
     });
     await setDoc(doc(db, 'config', 'temas_lista'), { temas: lista, atualizadoEm: Date.now() });
+    await publicarTemasAgendados();
 }
+// Temas com início/fim: os sites trocam sozinhos dentro do período (config/tema_agendados).
+const msAgenda = v => { const t = v ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+function estadoAgendaTema(t, agora = Date.now()) {
+    const i = msAgenda(t.agendaInicio), f = msAgenda(t.agendaFim);
+    if (i == null && f == null) return '';
+    if (f != null && agora >= f) return 'encerrado';
+    if (i != null && agora < i) return 'futuro';
+    return 'agora';
+}
+async function publicarTemasAgendados() {
+    const lista = temasLista.filter(t => msAgenda(t.agendaInicio) != null || msAgenda(t.agendaFim) != null)
+        .map(t => ({ id: t.id, nome: t.nome || '', inicio: msAgenda(t.agendaInicio), fim: msAgenda(t.agendaFim), dados: dadosPublicosTema(t) }));
+    try { await setDoc(doc(db, 'config', 'tema_agendados'), { lista, atualizadoEm: Date.now() }); } catch (e) { console.warn('Agendamento de temas:', e); }
+}
+const fmtAgenda = v => { const t = msAgenda(v); return t == null ? '' : new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
 
 // O que vai para config/tema (o que os sites leem): tudo já resolvido.
 function dadosPublicosTema(t) {
@@ -12826,35 +12899,41 @@ window.carregarTemas = carregarTemas;
 window.renderTemas = function() {
     const box = document.getElementById('lista-temas');
     if (!box) return;
+    const agendadoAgora = temasLista.filter(t => estadoAgendaTema(t) === 'agora').sort((a, b) => (msAgenda(b.agendaInicio) || 0) - (msAgenda(a.agendaInicio) || 0))[0];
+    const noArId = agendadoAgora ? agendadoAgora.id : temaAtivoId;
     box.innerHTML = temasLista.map(t => {
-        const ativo = t.id === temaAtivoId;
-        const bg = valorEfetivoTema(t, 'bg'), card = valorEfetivoTema(t, 'card'), txt = valorEfetivoTema(t, 'txt'), acc = valorEfetivoTema(t, 'acc');
+        const ativo = t.id === noArId;
+        const estado = estadoAgendaTema(t);
+        const bg = valorEfetivoTema(t, 'bg'), card = valorEfetivoTema(t, 'card'), txt = valorEfetivoTema(t, 'txt');
+        const tag = ativo ? `<span class="tema-tag no-ar"><i class="fas fa-check-circle"></i> No ar${agendadoAgora && ativo ? ' (agendado)' : ''}</span>`
+            : estado === 'futuro' ? '<span class="tema-tag agendado"><i class="fas fa-clock"></i> Agendado</span>'
+            : '<span class="tema-tag off"><i class="fas fa-pause-circle"></i> Desativado</span>';
+        const agenda = (t.agendaInicio || t.agendaFim) ? `<small class="tema-card-agenda"><i class="fas fa-calendar-alt"></i> ${t.agendaInicio ? fmtAgenda(t.agendaInicio) : '…'} → ${t.agendaFim ? fmtAgenda(t.agendaFim) : '…'}</small>` : '';
         return `<div class="tema-card ${ativo ? 'ativo' : ''}">
+            <div class="tema-card-nome" title="${escapeHtmlPedido(t.nome || 'Tema')}">${escapeHtmlPedido(t.nome || 'Tema')}</div>
             <div class="tema-card-preview" data-tema-topo="${t.id}" style="background:${bg}; background-size:cover; background-position:center;">
+                ${tag}
                 <div class="tema-card-box" style="background:${card}; color:${txt};"><span data-tema-logo="${t.id}">${escapeHtmlPedido(t.nome || 'Tema')}</span></div>
-                <span class="tema-card-acc" style="background:${acc};"></span>
             </div>
-            <div class="tema-card-body">
-                <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
-                <div class="tema-card-acoes">
-                    <button type="button" class="btn-action aplicar" title="${ativo ? 'Este tema já está no ar' : 'Aplicar nos sites'}" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i></button>
-                    <button type="button" class="btn-action previa" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
-                    <button type="button" class="btn-action edit" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
-                    <button type="button" class="btn-action copy" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
-                    ${t.id !== 'padrao' ? `<button type="button" class="btn-action del" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
-                </div>
+            ${agenda}
+            <div class="tema-card-acoes">
+                <button type="button" class="btn-action aplicar ${ativo ? 'no-ar' : 'pausado'}" title="${ativo ? 'Este tema está no ar' : 'Pausado — clique para aplicar nos sites'}" onclick="${ativo ? '' : `window.aplicarTema('${t.id}')`}"><i class="fas fa-${ativo ? 'check' : 'pause'}"></i></button>
+                <button type="button" class="btn-action previa" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
+                <button type="button" class="btn-action edit" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
+                <button type="button" class="btn-action copy" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
+                ${t.id !== 'padrao' ? `<button type="button" class="btn-action del" title="Excluir" onclick="window.excluirTema('${t.id}')"><i class="fas fa-trash"></i></button>` : ''}
             </div>
         </div>`;
     }).join('');
     temasLista.forEach(async t => {
         const topo = imagemEfetivaTema(t, 'imgTopo');
-        if (topo) {
+        if (topo && topo !== '__sem__') {
             const src = await resolverImagemTemaAdmin(topo);
             const el = box.querySelector(`[data-tema-topo="${t.id}"]`);
             if (el && src) el.style.backgroundImage = `url('${src}')`;
         }
         const logo = imagemEfetivaTema(t, 'logoPrincipal');
-        if (logo) {
+        if (logo && logo !== '__sem__') {
             const src = await resolverImagemTemaAdmin(logo);
             const el = box.querySelector(`[data-tema-logo="${t.id}"]`);
             if (el && src) el.outerHTML = `<img src="${src}" style="max-height:40px; max-width:100%;">`;
@@ -12943,14 +13022,16 @@ window.retomarPadraoCor = function(campo) {
 function htmlCampoImgTema([campo, label, ajuda]) {
     const ed = window.__temaEdicao;
     const temPropria = !!ed.imgs[campo] || !!ed.arquivos[campo];
+    const semImagem = ed.imgs[campo] === '__sem__' && !ed.arquivos[campo];
     const [titulo, legenda] = ROTULO_IMG_TEMA[campo] || [label, ajuda];
     return `<div class="tema-item-caixa tema-img-campo" data-campo-img="${campo}">
         <div class="tema-campo-topo"><label title="${escapeHtmlPedido(label)}">${titulo}</label>${!temPropria ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
         <small class="tema-campo-ajuda">${legenda}</small>
-        <div class="tema-item-visual tema-img-visual"><img id="tema-prev-${campo}" src="" style="display:none;"><span class="tema-img-vazio"><i class="fas fa-image"></i> Imagem padrão</span></div>
+        <div class="tema-item-visual tema-img-visual"><img id="tema-prev-${campo}" src="" style="display:none;"><span class="tema-img-vazio">${semImagem ? '<i class="fas fa-ban"></i> Sem imagem' : '<i class="fas fa-image"></i> Imagem padrão'}</span></div>
         <small class="tema-img-alerta" id="tema-alerta-${campo}"></small>
         <div class="tema-item-acoes">
             <label class="tema-item-btn tema-item-btn-principal"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" hidden onchange="window.selecionarImagemTema('${campo}', this)"></label>
+            <button type="button" class="tema-item-btn" ${semImagem ? 'disabled' : ''} onclick="window.semImagemTema('${campo}')"><i class="fas fa-ban"></i> Sem imagem</button>
             <button type="button" class="tema-item-btn" ${temPropria ? '' : 'disabled'} onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>
         </div>
     </div>`;
@@ -12963,7 +13044,7 @@ async function mostrarPreviaImgTema(campo) {
     const mostrar = (src) => { if (src) { prev.src = src; prev.style.display = ''; if (vazio) vazio.style.display = 'none'; } else { prev.style.display = 'none'; if (vazio) vazio.style.display = ''; } };
     if (ed.arquivos[campo]) return mostrar(URL.createObjectURL(ed.arquivos[campo]));
     const ref = ed.imgs[campo] || (ed.id !== 'padrao' ? getTemaPadrao()[campo] : '');
-    mostrar(ref ? await resolverImagemTemaAdmin(ref) : '');
+    mostrar(ref && ref !== '__sem__' ? await resolverImagemTemaAdmin(ref) : '');
 }
 
 window.abrirEditorTema = function(id = '') {
@@ -12989,6 +13070,14 @@ window.abrirEditorTema = function(id = '') {
                 ${secao('Geral', 'Vale para a página inicial e para o cardápio. Imagens em branco = imagem padrão.', cores('geral') + imgs('geral'))}
                 ${secao('Página inicial', 'Cores com "padrão" mantêm a cor de hoje.', cores('inicio') + imgs('inicio'))}
                 ${secao('Cardápio', 'Cores com "padrão" mantêm a cor de hoje. O menu lateral do cardápio usa as mesmas cores e logo da página inicial.', cores('cardapio'))}
+                <div class="tema-secao">
+                    <h4 class="font-display tema-secao-titulo">Agendamento (opcional)</h4>
+                    <small class="tema-campo-ajuda tema-secao-ajuda">Com início e/ou fim, o tema entra e sai do ar sozinho nesse período. Fora dele, os sites voltam ao tema aplicado.</small>
+                    <div class="form-grid tema-agenda-grade">
+                        <div><label>Início</label><input type="datetime-local" id="tema-agenda-inicio" value="${escapeHtmlPedido(t.agendaInicio || '')}"></div>
+                        <div><label>Fim</label><input type="datetime-local" id="tema-agenda-fim" value="${escapeHtmlPedido(t.agendaFim || '')}"></div>
+                    </div>
+                </div>
                 <div class="tema-editor-acoes">
                     <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
                     <button type="button" class="btn btn-primary" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
@@ -13025,6 +13114,15 @@ window.selecionarImagemTema = function(campo, input) {
     img.src = URL.createObjectURL(file);
 };
 
+window.semImagemTema = function(campo) {
+    const ed = window.__temaEdicao;
+    ed.imgs[campo] = '__sem__';
+    delete ed.arquivos[campo];
+    const def = CAMPOS_IMG_TEMA.find(c => c[0] === campo);
+    const el = document.querySelector(`#modal-editor-tema [data-campo-img="${campo}"]`);
+    if (el) el.outerHTML = htmlCampoImgTema(def);
+    mostrarPreviaImgTema(campo);
+};
 window.limparImagemTema = function(campo) {
     const ed = window.__temaEdicao;
     ed.imgs[campo] = '';
@@ -13101,7 +13199,10 @@ window.salvarTema = async function() {
         const imgs = { ...ed.imgs };
         for (const [campo, file] of Object.entries(ed.arquivos)) imgs[campo] = await enviarImagemTema(file);
         etapa = 'tema';
-        const dados = { id: ed.id || gerarIdTema(), nome, ordem: anterior.ordem || Date.now(), ...imgs };
+        const agendaInicio = document.getElementById('tema-agenda-inicio')?.value || '';
+        const agendaFim = document.getElementById('tema-agenda-fim')?.value || '';
+        if (agendaInicio && agendaFim && agendaFim <= agendaInicio) { customAlert('No agendamento, o fim precisa ser depois do início.', 'Atenção'); if (btn) { btn.disabled = false; btn.innerHTML = 'Salvar tema'; } return; }
+        const dados = { id: ed.id || gerarIdTema(), nome, ordem: anterior.ordem || Date.now(), agendaInicio, agendaFim, ...imgs };
         // Cor igual ao padrão é gravada vazia: assim continua seguindo o Padrão.
         CHAVES_COR_TEMA.forEach(k => {
             const v = ed.cores[k];
@@ -13203,6 +13304,7 @@ window.abrirSeletorCor = async function(campo, ancora) {
     const pop = document.createElement('div');
     pop.id = 'seletor-cor-pop';
     pop.innerHTML = `
+        <button type="button" class="sc-sem-cor" onclick="window.usarCorSeletor('#FFFFFF')"><span></span> Sem cor (branco)</button>
         <div class="sc-titulo">Cores da marca</div>
         <div class="sc-grade">${CORES_MARCA.map(v => sw(v)).join('')}</div>
         <div class="sc-titulo">Cores salvas</div>
@@ -13829,3 +13931,250 @@ window.gerarCodigoCupom = async function() {
     const campo = document.getElementById('cupom-codigo');
     if (campo) { campo.value = codigo; campo.focus(); }
 };
+
+// =====================================================================
+// EDITOR DO SITE (Layout > Página inicial / Cardápio) — 2026-10-15
+// Grava em config/site_inicio e config/site_cardapio. Os sites leem esses
+// registros; sem eles, continuam como sempre foram.
+// =====================================================================
+const ICONES_SITE = [
+    ['fas fa-heart', 'Coração'], ['fas fa-utensils', 'Talheres'], ['fab fa-whatsapp', 'WhatsApp'], ['fab fa-instagram', 'Instagram'],
+    ['fab fa-facebook', 'Facebook'], ['fab fa-tiktok', 'TikTok'], ['fas fa-birthday-cake', 'Bolo'], ['fas fa-gift', 'Presente'],
+    ['fas fa-star', 'Estrela'], ['fas fa-map-marker-alt', 'Localização'], ['fas fa-phone', 'Telefone'], ['fas fa-envelope', 'E-mail'],
+    ['fas fa-calendar-alt', 'Calendário'], ['fas fa-shopping-basket', 'Cesta'], ['fas fa-info-circle', 'Informação'], ['fas fa-link', 'Link']
+];
+const ACOES_SITE = {
+    link: ['Abrir link', 'Abre o link informado.', 'Link (https://...)'],
+    quem_somos: ['Abrir "Quem somos"', 'Abre a janela Quem somos.', ''],
+    cardapio: ['Ir para o cardápio', 'Vai para a página do cardápio.', ''],
+    inicio: ['Ir para a página inicial', 'Vai para a página inicial.', ''],
+    whatsapp: ['Abrir WhatsApp', 'Abre uma conversa no WhatsApp com o número informado.', 'Número com DDD (ex.: 5581999999999)']
+};
+const WHATS_FAVU = '558195256641', INSTA_FAVU = 'https://www.instagram.com/favucozinha/';
+const novoIdSite = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+function padraoSiteInicio() {
+    return {
+        botoesCapa: [
+            { id: novoIdSite(), titulo: 'Quem Somos', legenda: 'Nossa história e essência.', icone: 'fas fa-heart', acao: 'quem_somos', link: '', visivel: true },
+            { id: novoIdSite(), titulo: 'Cardápio', legenda: 'Confira nosso catálogo.', icone: 'fas fa-utensils', acao: 'cardapio', link: '', visivel: true },
+            { id: novoIdSite(), titulo: 'Chama o Favu', legenda: 'Fale com a gente.', icone: 'fab fa-whatsapp', acao: 'whatsapp', link: WHATS_FAVU, visivel: true },
+            { id: novoIdSite(), titulo: 'Instagram', legenda: 'Acompanha a gente.', icone: 'fab fa-instagram', acao: 'link', link: INSTA_FAVU, visivel: true }
+        ],
+        menuLateral: [
+            { id: novoIdSite(), titulo: 'QUEM SOMOS', acao: 'quem_somos', link: '', visivel: true },
+            { id: novoIdSite(), titulo: 'CARDÁPIO', acao: 'cardapio', link: '', visivel: true }
+        ],
+        redes: [
+            { id: novoIdSite(), titulo: 'Nos siga no Instagram', icone: 'fab fa-instagram', acao: 'link', link: INSTA_FAVU, visivel: true },
+            { id: novoIdSite(), titulo: 'Falar com o Favu', icone: 'fab fa-whatsapp', acao: 'whatsapp', link: WHATS_FAVU, visivel: true }
+        ],
+        quemSomos: {
+            texto: '<p>Inspirada nas receitas e lembranças de família, juntamos a tradição e a criatividade para criar pratos, bolos e salgados sob encomenda, uma coisa melhor que a outra.</p><p>Tudo artesanal, feito a quatro mãos, de <b>mãe para filho</b>, com ingredientes selecionados e um toque especial que só a FAVU tem!</p>',
+            destaque: 'Faça sua encomenda e vamos transformar seus momentos especiais em inesquecíveis!',
+            botaoTexto: 'Falar com o Favu', botaoAcao: 'whatsapp', botaoLink: WHATS_FAVU, botaoVisivel: true
+        },
+        rodape: { assinatura: 'FAVU Cozinha Afetiva', copyright: '© 2026 Todos os direitos reservados.' }
+    };
+}
+function padraoSiteCardapio() {
+    return {
+        menuLateral: [
+            { id: novoIdSite(), titulo: 'QUEM SOMOS', acao: 'quem_somos', link: '', visivel: true },
+            { id: novoIdSite(), titulo: 'MENU INICIAL', acao: 'inicio', link: '', visivel: true }
+        ],
+        redes: [
+            { id: novoIdSite(), titulo: 'Nos siga no Instagram', icone: 'fab fa-instagram', acao: 'link', link: INSTA_FAVU, visivel: true },
+            { id: novoIdSite(), titulo: 'Falar com o Favu', icone: 'fab fa-whatsapp', acao: 'whatsapp', link: WHATS_FAVU, visivel: true }
+        ],
+        textos: { tituloResumo: 'RESUMO DO PEDIDO', botaoFazerPedido: 'FAZER PEDIDO', tituloInfo: 'INFORMAÇÕES DO PEDIDO', botaoConfirmar: 'CONFIRMAR PEDIDO', saudacaoWhatsapp: 'Olá, Favu!\nGostaria de encomendar os itens abaixo:' }
+    };
+}
+window.__siteEd = { inicio: null, cardapio: null };
+
+async function carregarEditorSite() {
+    try {
+        const [a, b] = await Promise.all([getDoc(doc(db, 'config', 'site_inicio')), getDoc(doc(db, 'config', 'site_cardapio'))]);
+        const ini = padraoSiteInicio();
+        if (a.exists()) Object.assign(ini, a.data());
+        else {
+            // Aproveita os botões antigos (coleções botoes_capa / botoes_menu), se houver.
+            try {
+                const [capa, menu] = await Promise.all([getDocs(collection(db, 'botoes_capa')), getDocs(collection(db, 'botoes_menu'))]);
+                if (!capa.empty) { ini.botoesCapa = []; capa.forEach(d => { const i = d.data(); ini.botoesCapa.push({ id: novoIdSite(), titulo: i.titulo || '', legenda: i.desc || '', icone: i.icon || 'fas fa-link', acao: 'link', link: i.link || '', visivel: true }); }); }
+                if (!menu.empty) { ini.menuLateral = []; menu.forEach(d => { const i = d.data(); ini.menuLateral.push({ id: novoIdSite(), titulo: i.titulo || '', acao: 'link', link: i.link || '', visivel: true }); }); }
+            } catch (e) {}
+        }
+        const car = padraoSiteCardapio();
+        if (b.exists()) { const d = b.data(); Object.assign(car, d); car.textos = { ...padraoSiteCardapio().textos, ...(d.textos || {}) }; }
+        window.__siteEd = { inicio: ini, cardapio: car };
+    } catch (e) {
+        console.error(e);
+        window.__siteEd = { inicio: padraoSiteInicio(), cardapio: padraoSiteCardapio() };
+    }
+    renderEditorSite('inicio');
+    renderEditorSite('cardapio');
+}
+window.carregarEditorSite = carregarEditorSite;
+
+window.trocarSubAbaLayout = function(sub) {
+    document.querySelectorAll('#t-tema [data-sub-layout]').forEach(b => b.classList.toggle('active', b.dataset.subLayout === sub));
+    document.querySelectorAll('#t-tema [data-painel-layout]').forEach(p => { p.style.display = p.dataset.painelLayout === sub ? '' : 'none'; });
+    if ((sub === 'inicio' || sub === 'cardapio') && !window.__siteEd.inicio) carregarEditorSite();
+};
+
+function linhaItemSite(site, lista, item, idx, total, opc) {
+    const acao = ACOES_SITE[item.acao] || ACOES_SITE.link;
+    const precisaLink = item.acao === 'link' || item.acao === 'whatsapp';
+    const base = `window.editarItemSite('${site}','${lista}',${idx}`;
+    return `<div class="site-item ${item.visivel === false ? 'site-item-oculto' : ''}">
+        <div class="site-item-ordem">
+            <button type="button" class="btn-action" title="Subir" ${idx === 0 ? 'disabled' : ''} onclick="window.moverItemSite('${site}','${lista}',${idx},-1)"><i class="fas fa-arrow-up"></i></button>
+            <button type="button" class="btn-action" title="Descer" ${idx === total - 1 ? 'disabled' : ''} onclick="window.moverItemSite('${site}','${lista}',${idx},1)"><i class="fas fa-arrow-down"></i></button>
+        </div>
+        <div class="site-item-campos">
+            <div class="site-campo"><label>Texto</label><input type="text" value="${escapeHtmlPedido(item.titulo || '')}" oninput="${base},'titulo',this.value)"></div>
+            ${opc.legenda ? `<div class="site-campo"><label>Legenda</label><input type="text" value="${escapeHtmlPedido(item.legenda || '')}" oninput="${base},'legenda',this.value)"></div>` : ''}
+            ${opc.icone ? `<div class="site-campo site-campo-icone"><label>Ícone</label><div class="site-icone-linha"><span class="site-icone-previa"><i class="${escapeHtmlPedido(item.icone || 'fas fa-link')}"></i></span><select onchange="${base},'icone',this.value); this.previousElementSibling.innerHTML='<i class=&quot;'+this.value+'&quot;></i>'">${ICONES_SITE.map(([v, n]) => `<option value="${v}" ${v === item.icone ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>` : ''}
+            <div class="site-campo"><label>Ação</label><select onchange="${base},'acao',this.value); window.renderEditorSite('${site}')">${Object.entries(ACOES_SITE).map(([v, [n]]) => `<option value="${v}" ${v === (item.acao || 'link') ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+            ${precisaLink ? `<div class="site-campo site-campo-link"><label>${acao[2]}</label><input type="text" value="${escapeHtmlPedido(item.link || '')}" oninput="${base},'link',this.value)"></div>` : ''}
+            <small class="site-item-regra"><i class="fas fa-info-circle"></i> Regra: ${acao[1]}</small>
+        </div>
+        <div class="site-item-acoes">
+            <button type="button" class="btn-action toggle" title="${item.visivel === false ? 'Oculto — mostrar' : 'Visível — ocultar'}" onclick="window.alternarItemSite('${site}','${lista}',${idx})"><i class="fas fa-${item.visivel === false ? 'eye-slash' : 'eye'}"></i></button>
+            <button type="button" class="btn-action del" title="Apagar" onclick="window.apagarItemSite('${site}','${lista}',${idx})"><i class="fas fa-trash"></i></button>
+        </div>
+    </div>`;
+}
+function blocoListaSite(site, lista, titulo, ajuda, opc) {
+    const itens = window.__siteEd[site][lista] || [];
+    return `<section class="panel-card secao-aba">
+        <div class="secao-aba-cabecalho"><h2 class="font-display">${titulo}</h2>
+            <button type="button" class="btn btn-primary" onclick="window.adicionarItemSite('${site}','${lista}')"><i class="fas fa-plus"></i> Adicionar</button></div>
+        ${ajuda ? `<small class="campo-ajuda">${ajuda}</small>` : ''}
+        <div class="site-itens">${itens.length ? itens.map((it, i) => linhaItemSite(site, lista, it, i, itens.length, opc)).join('') : '<small class="campo-ajuda">Nenhum item. Clique em Adicionar.</small>'}</div>
+    </section>`;
+}
+function rodapeSalvarSite(site) {
+    return `<div class="site-salvar-barra">
+        <button type="button" class="btn btn-secondary" onclick="window.abrirPreviaSite('${site}')"><i class="fas fa-eye"></i> Ver prévia</button>
+        <button type="button" class="btn btn-primary" onclick="window.salvarEditorSite('${site}')"><i class="fas fa-save"></i> Salvar ${site === 'inicio' ? 'página inicial' : 'cardápio'}</button>
+    </div>`;
+}
+function renderEditorSite(site) {
+    const box = document.getElementById(site === 'inicio' ? 'editor-site-inicio' : 'editor-site-cardapio');
+    const d = window.__siteEd[site];
+    if (!box || !d) return;
+    if (site === 'inicio') {
+        const qs = d.quemSomos || {};
+        const rd = d.rodape || {};
+        const bAcao = qs.botaoAcao || 'link';
+        box.innerHTML = `
+            ${blocoListaSite('inicio', 'botoesCapa', 'Botões da capa', 'Os cartões grandes da página inicial.', { legenda: true, icone: true })}
+            ${blocoListaSite('inicio', 'menuLateral', 'Menu lateral', 'Links do menu que abre no botão ☰ da página inicial.', {})}
+            ${blocoListaSite('inicio', 'redes', 'Redes sociais do menu', 'Links que ficam no fim do menu lateral.', { icone: true })}
+            <section class="panel-card secao-aba">
+                <div class="secao-aba-cabecalho"><h2 class="font-display">Quem somos</h2></div>
+                <div class="cat-rich-wrapper"><label>Texto</label>${barraRicaSite('qs')}<div id="qs-obs-editor" class="cat-rich-editor site-rich" contenteditable="true" onfocus="window.focusCatEditor('qs')"></div><textarea id="qs-obs" style="display:none;"></textarea></div>
+                <div class="cat-rich-wrapper"><label>Frase em destaque</label>${barraRicaSite('qsd')}<div id="qsd-obs-editor" class="cat-rich-editor site-rich" contenteditable="true" onfocus="window.focusCatEditor('qsd')"></div><textarea id="qsd-obs" style="display:none;"></textarea></div>
+                <div class="form-grid site-qs-botao">
+                    <div><label>Texto do botão</label><input type="text" id="qs-botao-texto" value="${escapeHtmlPedido(qs.botaoTexto || '')}"></div>
+                    <div><label>Ação do botão</label><select id="qs-botao-acao" onchange="window.__siteEd.inicio.quemSomos.botaoAcao=this.value">${['whatsapp', 'link'].map(v => `<option value="${v}" ${v === bAcao ? 'selected' : ''}>${ACOES_SITE[v][0]}</option>`).join('')}</select></div>
+                    <div><label>Link ou número</label><input type="text" id="qs-botao-link" value="${escapeHtmlPedido(qs.botaoLink || '')}"></div>
+                    <div><label>Mostrar o botão</label><select id="qs-botao-visivel"><option value="1" ${qs.botaoVisivel !== false ? 'selected' : ''}>Sim</option><option value="0" ${qs.botaoVisivel === false ? 'selected' : ''}>Não</option></select></div>
+                </div>
+            </section>
+            <section class="panel-card secao-aba">
+                <div class="secao-aba-cabecalho"><h2 class="font-display">Rodapé</h2></div>
+                <div class="form-grid">
+                    <div><label>Assinatura (computador)</label><input type="text" id="rodape-assinatura" value="${escapeHtmlPedido(rd.assinatura || '')}"></div>
+                    <div><label>Direitos reservados</label><input type="text" id="rodape-copyright" value="${escapeHtmlPedido(rd.copyright || '')}"></div>
+                </div>
+            </section>
+            ${rodapeSalvarSite('inicio')}`;
+        window.setCatRichText('qs', qs.texto || '');
+        window.setCatRichText('qsd', qs.destaque || '');
+    } else {
+        const t = d.textos || {};
+        const campoTexto = (k, label) => `<div><label>${label}</label><input type="text" id="txt-cardapio-${k}" value="${escapeHtmlPedido(t[k] || '')}"></div>`;
+        box.innerHTML = `
+            ${blocoListaSite('cardapio', 'menuLateral', 'Menu lateral', 'Links do menu que abre no botão ☰ do cardápio.', {})}
+            ${blocoListaSite('cardapio', 'redes', 'Redes sociais do menu', 'Links que ficam no fim do menu lateral do cardápio.', { icone: true })}
+            <section class="panel-card secao-aba">
+                <div class="secao-aba-cabecalho"><h2 class="font-display">Textos do cardápio</h2></div>
+                <div class="form-grid">
+                    ${campoTexto('tituloResumo', 'Título do resumo')}
+                    ${campoTexto('botaoFazerPedido', 'Botão "Fazer pedido"')}
+                    ${campoTexto('tituloInfo', 'Título de "Informações do pedido"')}
+                    ${campoTexto('botaoConfirmar', 'Botão "Confirmar pedido"')}
+                </div>
+                <div style="margin-top:12px;"><label>Saudação da mensagem do WhatsApp</label><textarea id="txt-cardapio-saudacaoWhatsapp" rows="2">${escapeHtmlPedido(t.saudacaoWhatsapp || '')}</textarea></div>
+                <small class="campo-ajuda" style="margin-top:6px;">Os textos do "Quem somos" e do rodapé são os mesmos da página inicial.</small>
+            </section>
+            ${rodapeSalvarSite('cardapio')}`;
+    }
+}
+window.renderEditorSite = renderEditorSite;
+function barraRicaSite(prefix) {
+    const b = (c, i) => `<button type="button" onclick="window.execCatRichText('${c}','${prefix}')">${i}</button>`;
+    return `<div class="cat-rich-toolbar aviso-rich-toolbar"><div class="rich-tools-left">${b('bold', '<b>B</b>')}${b('italic', '<i>I</i>')}${b('underline', '<u>U</u>')}</div><div class="rich-tools-separator"></div><div class="rich-tools-right">${b('justifyLeft', '<i class="fas fa-align-left"></i>')}${b('justifyCenter', '<i class="fas fa-align-center"></i>')}${b('justifyRight', '<i class="fas fa-align-right"></i>')}${b('justifyFull', '<i class="fas fa-align-justify"></i>')}</div></div>`;
+}
+// Guarda o que já foi digitado antes de redesenhar a tela.
+function lerCamposFixosSite(site) {
+    const d = window.__siteEd[site];
+    if (!d) return;
+    if (site === 'inicio' && document.getElementById('qs-obs-editor')) {
+        d.quemSomos = {
+            ...d.quemSomos,
+            texto: window.getCatRichText('qs'), destaque: window.getCatRichText('qsd'),
+            botaoTexto: document.getElementById('qs-botao-texto')?.value.trim() || '',
+            botaoAcao: document.getElementById('qs-botao-acao')?.value || 'link',
+            botaoLink: document.getElementById('qs-botao-link')?.value.trim() || '',
+            botaoVisivel: document.getElementById('qs-botao-visivel')?.value !== '0'
+        };
+        d.rodape = { assinatura: document.getElementById('rodape-assinatura')?.value.trim() || '', copyright: document.getElementById('rodape-copyright')?.value.trim() || '' };
+    }
+    if (site === 'cardapio' && document.getElementById('txt-cardapio-tituloResumo')) {
+        const t = {};
+        ['tituloResumo', 'botaoFazerPedido', 'tituloInfo', 'botaoConfirmar', 'saudacaoWhatsapp'].forEach(k => { t[k] = document.getElementById(`txt-cardapio-${k}`)?.value || ''; });
+        d.textos = t;
+    }
+}
+const redesenharSite = site => { lerCamposFixosSite(site); renderEditorSite(site); };
+window.editarItemSite = function(site, lista, idx, campo, valor) { const it = window.__siteEd[site]?.[lista]?.[idx]; if (it) it[campo] = valor; };
+window.alternarItemSite = function(site, lista, idx) { const it = window.__siteEd[site][lista][idx]; it.visivel = it.visivel === false; redesenharSite(site); };
+window.moverItemSite = function(site, lista, idx, dir) {
+    const arr = window.__siteEd[site][lista]; const j = idx + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    redesenharSite(site);
+};
+window.apagarItemSite = function(site, lista, idx) {
+    const it = window.__siteEd[site][lista][idx];
+    customConfirm(`Apagar "${it.titulo || 'item'}"?`, () => { window.__siteEd[site][lista].splice(idx, 1); redesenharSite(site); });
+};
+window.adicionarItemSite = function(site, lista) {
+    const novo = { id: novoIdSite(), titulo: 'Novo botão', acao: 'link', link: '', visivel: true };
+    if (lista === 'botoesCapa') Object.assign(novo, { legenda: '', icone: 'fas fa-link' });
+    if (lista === 'redes') Object.assign(novo, { icone: 'fas fa-link' });
+    window.__siteEd[site][lista].push(novo);
+    redesenharSite(site);
+};
+window.salvarEditorSite = async function(site) {
+    lerCamposFixosSite(site);
+    const d = JSON.parse(JSON.stringify(window.__siteEd[site]));
+    ['botoesCapa', 'menuLateral', 'redes'].forEach(k => { if (Array.isArray(d[k])) d[k].forEach((it, i) => { it.ordem = i; }); });
+    const semLink = ['botoesCapa', 'menuLateral', 'redes'].flatMap(k => (d[k] || []).filter(it => it.visivel !== false && (it.acao === 'link' || it.acao === 'whatsapp') && !String(it.link || '').trim()).map(it => it.titulo || 'sem nome'));
+    if (semLink.length) return customAlert(`Falta o link ou número em: ${semLink.join(', ')}.`, 'Atenção');
+    window.mostrarLoading?.(true);
+    try {
+        await setDoc(doc(db, 'config', site === 'inicio' ? 'site_inicio' : 'site_cardapio'), { ...d, atualizadoEm: Date.now() });
+        window.showToast(site === 'inicio' ? 'Página inicial salva!' : 'Cardápio salvo!');
+    } catch (e) { console.error(e); customAlert(`Erro ao salvar (${e?.code || e?.message || 'erro'}).`, 'Erro'); }
+    window.mostrarLoading?.(false);
+};
+window.abrirPreviaSite = function(site) {
+    const noAr = temaAtivoId || 'padrao';
+    window.abrirPreviaTema(noAr);
+    if (site === 'cardapio') setTimeout(() => window.trocarPreviaTema('pagina', 'cardapio.html'), 50);
+};
+setTimeout(() => { if (document.getElementById('editor-site-inicio')) carregarEditorSite(); }, 1800);

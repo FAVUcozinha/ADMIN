@@ -5949,7 +5949,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
             </div>
 
             <div id="t-tema" class="tab-pane">
-                <!-- 2026-10-15: duas seções, cada uma num cartão que reúne tudo dela -->
+                <!-- 2026-10-15: Layout com três sub-abas: Temas, Página inicial e Cardápio -->
+                <div class="prod-tabs layout-subabas">
+                    <button type="button" class="prod-tab-btn active" data-sub-layout="temas" onclick="window.trocarSubAbaLayout('temas')"><i class="fas fa-palette"></i> Temas</button>
+                    <button type="button" class="prod-tab-btn" data-sub-layout="inicio" onclick="window.trocarSubAbaLayout('inicio')"><i class="fas fa-home"></i> Página inicial</button>
+                    <button type="button" class="prod-tab-btn" data-sub-layout="cardapio" onclick="window.trocarSubAbaLayout('cardapio')"><i class="fas fa-utensils"></i> Cardápio</button>
+                </div>
+                <div data-painel-layout="temas">
                 <section class="panel-card secao-aba" id="secao-temas">
                     <div class="secao-aba-cabecalho">
                         <h2 class="font-display">Temas do Site</h2>
@@ -5957,6 +5963,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     </div>
                     <div id="lista-temas" class="temas-grid"></div>
                 </section>
+                </div>
+                <div data-painel-layout="inicio" style="display:none;">
+                    <div id="editor-site-inicio"></div>
                 <form id="form-cores" class="form-grid panel-card" style="display:none;">
                     <div><label>Fundo Principal</label><input type="color" id="cor-bg" value="#F4E6CB"></div>
                     <div><label>Fundo de Caixas/Menus</label><input type="color" id="cor-card" value="#FFF5EB"></div>
@@ -5986,6 +5995,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div id="carrossel-ordem-bar" class="carrossel-ordem-bar"><span><i class="fas fa-info-circle"></i> A ordem mudou. Salve para aplicar no site.</span><div class="btns"><button type="button" class="btn btn-outline" onclick="window.desfazerOrdemCarrossel()">Desfazer</button><button type="button" class="btn btn-primary" onclick="window.salvarOrdemCarrosselBtn()"><i class="fas fa-save"></i> Salvar ordem</button></div></div>
                 <div id="galeria-preview" class="carrossel-admin-grid"></div>
                 </section>
+                </div>
+                <div data-painel-layout="cardapio" style="display:none;">
+                    <div id="editor-site-cardapio"></div>
+                </div>
             </div>
 
             <div id="t-orcamentos" class="tab-pane" style="position: relative; padding-bottom: 80px; background-color: var(--bg-color);">
@@ -6048,7 +6061,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                                     <label>Nome do cupom</label>
                                     <div class="cupom-codigo-linha">
                                         <input type="text" id="cupom-codigo" placeholder="Ex: BEMVINDO" required>
-                                        <button type="button" class="btn btn-secondary" title="Gerar código aleatório" onclick="window.gerarCodigoCupom()"><i class="fas fa-random"></i> Gerar</button>
+                                        <button type="button" class="btn btn-secondary cupom-btn-gerar" title="Gerar novo código de cupom" aria-label="Gerar novo código de cupom" onclick="window.gerarCodigoCupom()"><i class="fas fa-wand-magic-sparkles"></i></button>
                                     </div>
                                 </div>
                                 <div>
@@ -12651,7 +12664,9 @@ html body #modal-cadastrar-cupom .cupom-form-actions .btn { flex: 1; }
 @media (max-width: 600px) { html body #t-cupons .cupons-cabecalho .search-filter-actions { flex: 1 1 100% !important; } }
 
 /* Orçamento: abas centralizadas quando todas cabem (sem corte) */
-html body #t-orcamentos #orc-cats-nav.categorias-draggable.abas-cabem { justify-content: center !important; }
+html body #t-orcamentos #orc-cats-nav.categorias-draggable, html body #t-orcamentos #orc-cats-nav.categorias-draggable.abas-cabem { justify-content: flex-start !important; justify-content: safe center !important; }
+html body #t-orcamentos .orc-categorias-nav-wrapper, html body #t-orcamentos #orc-cats-nav { width: 100% !important; max-width: 100% !important; margin-left: 0 !important; margin-right: 0 !important; box-sizing: border-box !important; }
+html body #t-orcamentos #orc-menu-container .info-box { max-width: 850px !important; width: 100% !important; margin-left: auto !important; margin-right: auto !important; box-sizing: border-box !important; }
 /* Categorias: "Postagem" e "Retirada" */
 #tbl-categorias .cat-prog-bloco { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 #tbl-categorias .cat-prog-titulo { font-family: 'Basic Choice', cursive; color: var(--favu-rust); font-size: 0.8rem; text-transform: uppercase; margin-bottom: 2px; }
@@ -12693,9 +12708,64 @@ html body #t-orcamentos #orc-cats-nav.categorias-draggable.abas-cabem { justify-
 .tema-card-acoes { flex-wrap: nowrap !important; }
 .tema-card-acoes .btn-action.aplicar { background: var(--favu-rust) !important; color: #fff !important; border: none !important; }
 .tema-card-acoes .btn-action.aplicar:disabled { opacity: 0.4; cursor: default; }
+
+/* Cupom: botão de gerar só com ícone */
+html body #modal-cadastrar-cupom .cupom-btn-gerar { width: 46px; padding: 0 !important; display: flex !important; align-items: center; justify-content: center; font-size: 1.05rem; }
+/* Temas: cartão com nome em cima, etiqueta no canto e botões centralizados */
+#lista-temas .tema-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+#lista-temas .tema-card-nome { font-family: 'Basic Choice', cursive; color: var(--favu-green); font-size: 1.15rem; text-transform: uppercase; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lista-temas .tema-card-preview { position: relative; border-radius: 10px; }
+#lista-temas .tema-card-acc, #lista-temas .tema-card-body { display: none !important; }
+#lista-temas .tema-tag { position: absolute; top: 8px; right: 8px; z-index: 2; font-family: var(--font-numbers); font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+#lista-temas .tema-tag.no-ar { background: #28a745; color: #fff; }
+#lista-temas .tema-tag.off { background: #fff; color: #777; }
+#lista-temas .tema-tag.agendado { background: #7FB1C8; color: #fff; }
+#lista-temas .tema-card-agenda { text-align: center; color: #777; font-family: var(--font-numbers); font-size: 0.75rem; }
+#lista-temas .tema-card-acoes { display: flex; justify-content: center !important; align-items: center; gap: 6px; flex-wrap: nowrap !important; }
+#lista-temas .tema-card-acoes .btn-action.aplicar.no-ar { background: #28a745 !important; color: #fff !important; border: none !important; cursor: default; opacity: 1 !important; }
+#lista-temas .tema-card-acoes .btn-action.aplicar.pausado { background: #7FB1C8 !important; color: #fff !important; border: none !important; }
+#modal-editor-tema .tema-agenda-grade { margin-bottom: 0; }
+/* Seletor de cor: "Sem cor" */
+#seletor-cor-pop .sc-sem-cor { width: 100%; display: flex; align-items: center; gap: 8px; border: 1px solid #ddd; background: #fff; border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; cursor: pointer; font-family: var(--font-numbers); font-size: 0.8rem; color: var(--favu-green); }
+#seletor-cor-pop .sc-sem-cor span { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #ccc; background: linear-gradient(135deg, #fff 45%, #E60000 45%, #E60000 55%, #fff 55%); }
+/* Excluir categoria: 3 opções */
+#modal-excluir-cat .excluir-cat-texto { font-family: var(--font-numbers); color: var(--favu-green); margin: 0 0 14px; line-height: 1.45; }
+#modal-excluir-cat .excluir-cat-acoes { display: flex; flex-direction: column; gap: 8px; }
+#modal-excluir-cat .excluir-cat-acoes .btn { width: 100%; justify-content: center; }
+#modal-excluir-cat .excluir-cat-ajuda { display: block; margin-top: 12px; color: #999; font-family: var(--font-numbers); font-size: 0.78rem; line-height: 1.4; }
+#modal-excluir-cat .modal-header h3 { color: var(--favu-green) !important; }
+/* Orçamento: categoria oculta (só aparece aqui) */
+html body #t-orcamentos #orc-cats-nav .categoria-btn-orc.cat-oculta-orc:not(.active-link) { border-style: dashed !important; opacity: 0.8; }
+
+/* Layout: sub-abas e editor do site */
+html body #t-tema .layout-subabas { display: flex; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
+html body #t-tema .layout-subabas .prod-tab-btn { display: inline-flex; align-items: center; gap: 6px; }
+#t-tema .site-itens { display: flex; flex-direction: column; gap: 10px; }
+#t-tema .site-item { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; padding: 12px; border: 1px solid rgba(224,159,65,0.3); border-radius: 12px; background: var(--favu-card); }
+#t-tema .site-item.site-item-oculto { opacity: 0.55; }
+#t-tema .site-item-ordem, #t-tema .site-item-acoes { display: flex; flex-direction: column; gap: 6px; }
+#t-tema .site-item-ordem .btn-action { width: 30px; height: 30px; background: #fff; color: var(--favu-green); border: 1px solid #ddd; }
+#t-tema .site-item-ordem .btn-action:disabled { opacity: 0.35; cursor: default; }
+#t-tema .site-item-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 12px; align-items: end; min-width: 0; }
+#t-tema .site-campo { min-width: 0; }
+#t-tema .site-campo label { font-size: 0.85rem !important; margin-bottom: 3px; display: block; }
+#t-tema .site-campo input, #t-tema .site-campo select { width: 100%; box-sizing: border-box; }
+#t-tema .site-icone-linha { display: flex; gap: 6px; align-items: center; }
+#t-tema .site-icone-previa { flex: 0 0 38px; height: 38px; border-radius: 10px; background: #fff; border: 1px solid rgba(224,159,65,0.35); display: flex; align-items: center; justify-content: center; color: var(--favu-green); font-size: 1.1rem; }
+#t-tema .site-item-regra { grid-column: 1 / -1; color: #888; font-family: var(--font-numbers); font-size: 0.75rem; }
+#t-tema .site-qs-botao { margin-top: 12px; }
+#t-tema .site-rich { min-height: 80px; }
+#t-tema .cat-rich-wrapper { margin-bottom: 12px; }
+#t-tema .site-salvar-barra { position: sticky; bottom: 10px; z-index: 50; display: flex; justify-content: flex-end; gap: 10px; padding: 12px; background: #fff; border: 1px solid #eee; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,0.12); margin-bottom: 20px; }
+@media (max-width: 600px) {
+    #t-tema .site-item { grid-template-columns: 1fr; }
+    #t-tema .site-item-ordem, #t-tema .site-item-acoes { flex-direction: row; justify-content: flex-end; }
+    #t-tema .site-salvar-barra { flex-direction: column; }
+    #t-tema .site-salvar-barra .btn { width: 100%; }
+}
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-8"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-9"></script>
 
 
     <div id="modal-gasto-item" class="modal">
