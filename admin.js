@@ -1535,6 +1535,14 @@ window.bulkToggle = async function(type, status) {
 window.bulkDelete = function(type) {
     const checkboxes = document.querySelectorAll(`#tbl-${type} .row-checkbox:checked`);
     if(checkboxes.length === 0) return;
+    if (type === 'categorias') {
+        const ids = Array.from(checkboxes).map(cb => cb.value);
+        return customConfirm(textoConfirmarApagarCategorias(ids), async () => {
+            const qtd = await apagarCategoriasComProdutos(ids);
+            customAlert(qtd ? `Categorias e ${qtd} produto(s) excluídos!` : "Categorias excluídas!");
+            window.clearSelection(type); syncCats();
+        });
+    }
     customConfirm(`Excluir permanentemente ${checkboxes.length} item(ns)?`, async () => {
         for(let cb of checkboxes) await deleteDoc(doc(db, type, cb.value));
         customAlert("Itens excluídos!"); window.clearSelection(type);
@@ -2413,11 +2421,30 @@ window.togC = async(id, s) => {
     window.renderOrcamentoMenu?.();
 };
 
+// 2026-10-15: apagar a categoria apaga também os produtos dela (antes eles ficavam
+// "órfãos" e a categoria voltava a aparecer no orçamento).
+async function apagarCategoriasComProdutos(ids) {
+    const nomes = new Set(globalCategories.filter(c => ids.includes(c.id)).map(c => c.nome));
+    const produtos = allProducts.filter(p => nomes.has(p.categoria || ''));
+    await Promise.all(produtos.map(p => deleteDoc(doc(db, "produtos", p.id))));
+    await Promise.all(ids.map(id => deleteDoc(doc(db, "categorias", id))));
+    globalCategories = globalCategories.filter(c => !ids.includes(c.id));
+    allProducts = allProducts.filter(p => !nomes.has(p.categoria || ''));
+    window.renderCatsTable();
+    window.renderProdsTable?.();
+    window.renderOrcamentoMenu?.();
+    return produtos.length;
+}
+function textoConfirmarApagarCategorias(ids) {
+    const nomes = new Set(globalCategories.filter(c => ids.includes(c.id)).map(c => c.nome));
+    const qtd = allProducts.filter(p => nomes.has(p.categoria || '')).length;
+    const alvo = ids.length > 1 ? `as ${ids.length} categorias` : `a categoria "${[...nomes][0] || ''}"`;
+    return qtd ? `Excluir ${alvo}? Os ${qtd} produto(s) dela(s) também serão excluídos.` : `Excluir ${alvo}?`;
+}
 window.delC = async(id) => { 
-    customConfirm("Excluir categoria?", async () => { 
-        await deleteDoc(doc(db, "categorias", id)); 
-        globalCategories = globalCategories.filter(c => c.id !== id);
-        window.renderCatsTable(); 
+    customConfirm(textoConfirmarApagarCategorias([id]), async () => { 
+        const qtd = await apagarCategoriasComProdutos([id]);
+        window.showToast(qtd ? `Categoria e ${qtd} produto(s) excluídos.` : 'Categoria excluída.');
     }); 
 };
 
@@ -7639,6 +7666,19 @@ if (formCupom) {
             return;
         }
 
+        // 2026-10-15: nunca repetir código. Antes, salvar um código que já existia
+        // sobrescrevia o cupom antigo e zerava os usos dele.
+        if (codigo !== original) {
+            const historico = await carregarHistoricoCupons();
+            const jaExiste = (window.allCupons || []).some(c => String(c.id || c.codigo || '').toUpperCase() === codigo);
+            if (jaExiste || historico.includes(codigo)) {
+                customAlert(jaExiste
+                    ? `Já existe um cupom "${codigo}". Para usar de novo, edite o cupom existente e ajuste o limite de uso ou a validade.`
+                    : `O código "${codigo}" já foi usado antes e não pode se repetir. Use "Gerar" para criar um código novo.`, 'Atenção');
+                return;
+            }
+        }
+
         window.mostrarLoading(true);
         try {
             const payload = {
@@ -7661,6 +7701,7 @@ if (formCupom) {
             }
 
             await setDoc(doc(db, "cupons", codigo), payload, { merge: true });
+            await registrarCodigoCupom(codigo);
             window.showToast('Cupom salvo!');
             window.limparFormCupom();
         } catch (err) {
@@ -12661,6 +12702,21 @@ const CAMPOS_COR_TEMA = [
     ['corBotoesInfoPedido', 'Botão de "Informações do pedido"', '#E09F41', 'cardapio', 'fundo']
 ];
 const CHAVES_COR_TEMA = CAMPOS_COR_TEMA.map(c => c[0]);
+// Título curto (uma linha) e legenda de onde a cor aparece.
+const ROTULO_COR_TEMA = {
+    acc: ['Destaque', 'Botões e destaques'], txt: ['Textos', 'Textos gerais dos sites'], card: ['Fundo caixas', 'Caixas, menus e cartões'],
+    bg: ['Fundo', 'Fundo da página inicial'], corMenuLateral: ['Menu lateral', 'Fundo do menu lateral'], corIconesBotoes: ['Ícones botões', 'Ícones dos botões da capa'],
+    corBotoes: ['Fundo botões', 'Fundo dos botões da capa'], corTextoBotoes: ['Texto botões', 'Título dos botões da capa'], corLegendaBotoes: ['Legenda botões', 'Legenda dos botões da capa'],
+    bgCardapio: ['Fundo', 'Fundo do cardápio'], corTituloCategorias: ['Título categoria', 'Nome da categoria em destaque'], corBotoesCategorias: ['Abas categoria', 'Fundo das abas de categoria'],
+    corTextoCategorias: ['Texto abas', 'Texto das abas de categoria'], corFundoItens: ['Fundo itens', 'Tabela de itens'], corTituloItens: ['Nome itens', 'Nome de cada item'],
+    corDescricoes: ['Descrições', 'Descrições e pesos'], corResumoPedido: ['Barra resumo', 'Barra fixa do resumo'], corFundoResumo: ['Fundo resumo', 'Janela do resumo'],
+    corBotoesResumo: ['Botões resumo', 'Botões da janela do resumo'], corFundoInfoPedido: ['Fundo info. pedido', 'Janela "Informações do pedido"'], corBotoesInfoPedido: ['Botão info. pedido', 'Botão "Confirmar pedido"']
+};
+const ROTULO_IMG_TEMA = {
+    imgTopo: ['Faixa do topo', 'Cabeçalho dos dois sites · ideal 1376 × 196 px'], imgRodape: ['Faixa do rodapé', 'Rodapé dos dois sites · ideal 1376 × 196 px'],
+    logoRodape: ['Logo rodapé', 'Rodapé no celular · ideal 800 × 471 px, PNG transparente'], logoPrincipal: ['Logo principal', 'Página inicial · ideal 800 × 471 px, PNG transparente'],
+    logoMenu: ['Logo menu', 'Menu lateral (em branco = logo principal) · ideal 800 × 471 px']
+};
 const CORES_BASE_TEMA = ['bg', 'card', 'txt', 'acc'];
 const SITE_PADRAO_TEMA = Object.fromEntries(CAMPOS_COR_TEMA.map(c => [c[0], c[2]]));
 // [campo, rótulo, ajuda, seção, largura ideal, altura ideal]
@@ -12781,7 +12837,7 @@ window.renderTemas = function() {
             <div class="tema-card-body">
                 <div><strong>${escapeHtmlPedido(t.nome || 'Tema')}</strong>${ativo ? '<span class="tema-badge-ativo">No ar</span>' : ''}</div>
                 <div class="tema-card-acoes">
-                    <button type="button" class="btn btn-primary" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i> Aplicar</button>
+                    <button type="button" class="btn-action aplicar" title="${ativo ? 'Este tema já está no ar' : 'Aplicar nos sites'}" ${ativo ? 'disabled' : ''} onclick="window.aplicarTema('${t.id}')"><i class="fas fa-check"></i></button>
                     <button type="button" class="btn-action previa" title="Prévia" onclick="window.abrirPreviaTema('${t.id}')"><i class="fas fa-eye"></i></button>
                     <button type="button" class="btn-action edit" title="Editar" onclick="window.abrirEditorTema('${t.id}')"><i class="fas fa-pencil-alt"></i></button>
                     <button type="button" class="btn-action copy" title="Duplicar" onclick="window.duplicarTema('${t.id}')"><i class="fas fa-copy"></i></button>
@@ -12861,16 +12917,16 @@ window.excluirTema = function(id) {
 function htmlCampoCorTema(campo) {
     const ed = window.__temaEdicao;
     const def = CAMPOS_COR_TEMA.find(c => c[0] === campo);
+    const [titulo, ajuda] = ROTULO_COR_TEMA[campo] || [def[1], ''];
     const valor = ed.cores[campo];
     const igual = normCor(valor) === normCor(basePadraoCampo(ed.id, campo));
-    return `<div class="tema-cor-campo" data-campo="${campo}">
-        <div class="tema-campo-topo"><label>${def[1]}</label>${igual ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
-        <div class="tema-cor-linha">
-            <button type="button" class="tema-swatch" onclick="window.abrirSeletorCor('${campo}', this)">
-                <span class="tema-swatch-cor" style="background:${valor};"></span>
-                <span class="tema-swatch-valor">${/gradient/i.test(valor) ? 'Degradê' : escapeHtmlPedido(String(valor).toUpperCase())}</span>
-            </button>
-            ${igual ? '' : `<button type="button" class="tema-cor-reset" onclick="window.retomarPadraoCor('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>`}
+    return `<div class="tema-item-caixa tema-cor-campo" data-campo="${campo}">
+        <div class="tema-campo-topo"><label title="${escapeHtmlPedido(def[1])}">${titulo}</label>${igual ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
+        <small class="tema-campo-ajuda">${ajuda}</small>
+        <button type="button" class="tema-item-visual tema-cor-visual" style="background:${valor};" title="Escolher cor" onclick="window.abrirSeletorCor('${campo}', this)"><span>${/gradient/i.test(valor) ? 'Degradê' : escapeHtmlPedido(String(valor).toUpperCase())}</span></button>
+        <div class="tema-item-acoes">
+            <button type="button" class="tema-item-btn tema-item-btn-principal" onclick="window.abrirSeletorCor('${campo}', this.closest('.tema-item-caixa').querySelector('.tema-cor-visual'))"><i class="fas fa-palette"></i> Escolher cor</button>
+            <button type="button" class="tema-item-btn" ${igual ? 'disabled' : ''} onclick="window.retomarPadraoCor('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>
         </div>
     </div>`;
 }
@@ -12886,16 +12942,16 @@ window.retomarPadraoCor = function(campo) {
 
 function htmlCampoImgTema([campo, label, ajuda]) {
     const ed = window.__temaEdicao;
-    const herdada = !ed.imgs[campo] && ed.id !== 'padrao' && getTemaPadrao()[campo];
     const temPropria = !!ed.imgs[campo] || !!ed.arquivos[campo];
-    return `<div class="tema-img-campo" data-campo-img="${campo}">
-        <div class="tema-campo-topo"><label>${label}</label>${!temPropria ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
-        <small class="tema-campo-ajuda">${ajuda}</small>
-        <img id="tema-prev-${campo}" src="" style="display:none;">
+    const [titulo, legenda] = ROTULO_IMG_TEMA[campo] || [label, ajuda];
+    return `<div class="tema-item-caixa tema-img-campo" data-campo-img="${campo}">
+        <div class="tema-campo-topo"><label title="${escapeHtmlPedido(label)}">${titulo}</label>${!temPropria ? '<span class="tema-badge-padrao">padrão</span>' : ''}</div>
+        <small class="tema-campo-ajuda">${legenda}</small>
+        <div class="tema-item-visual tema-img-visual"><img id="tema-prev-${campo}" src="" style="display:none;"><span class="tema-img-vazio"><i class="fas fa-image"></i> Imagem padrão</span></div>
         <small class="tema-img-alerta" id="tema-alerta-${campo}"></small>
-        <div class="tema-img-acoes">
-            <label class="custom-file-upload"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" onchange="window.selecionarImagemTema('${campo}', this)"></label>
-            ${temPropria ? `<button type="button" class="tema-cor-reset" onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>` : ''}
+        <div class="tema-item-acoes">
+            <label class="tema-item-btn tema-item-btn-principal"><i class="fas fa-image"></i> Escolher<input type="file" accept="image/*" hidden onchange="window.selecionarImagemTema('${campo}', this)"></label>
+            <button type="button" class="tema-item-btn" ${temPropria ? '' : 'disabled'} onclick="window.limparImagemTema('${campo}')"><i class="fas fa-undo"></i> Retomar padrão</button>
         </div>
     </div>`;
 }
@@ -12903,10 +12959,11 @@ async function mostrarPreviaImgTema(campo) {
     const ed = window.__temaEdicao;
     const prev = document.getElementById(`tema-prev-${campo}`);
     if (!prev) return;
-    if (ed.arquivos[campo]) { prev.src = URL.createObjectURL(ed.arquivos[campo]); prev.style.display = ''; return; }
+    const vazio = prev.parentElement?.querySelector('.tema-img-vazio');
+    const mostrar = (src) => { if (src) { prev.src = src; prev.style.display = ''; if (vazio) vazio.style.display = 'none'; } else { prev.style.display = 'none'; if (vazio) vazio.style.display = ''; } };
+    if (ed.arquivos[campo]) return mostrar(URL.createObjectURL(ed.arquivos[campo]));
     const ref = ed.imgs[campo] || (ed.id !== 'padrao' ? getTemaPadrao()[campo] : '');
-    const src = ref ? await resolverImagemTemaAdmin(ref) : '';
-    if (src) { prev.src = src; prev.style.display = ''; } else { prev.style.display = 'none'; }
+    mostrar(ref ? await resolverImagemTemaAdmin(ref) : '');
 }
 
 window.abrirEditorTema = function(id = '') {
@@ -12921,9 +12978,9 @@ window.abrirEditorTema = function(id = '') {
     const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {} };
     CHAVES_IMG_TEMA.forEach(k => { ed.imgs[k] = t[k] || ''; });
     CHAVES_COR_TEMA.forEach(k => { ed.cores[k] = t[k] || basePadraoCampo(ed.id, k); });
-    const secao = (titulo, ajuda, html) => `<div class="tema-secao"><h4 class="font-display tema-secao-titulo">${titulo}</h4>${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda}</small>` : ''}${html}</div>`;
-    const cores = sec => `<div class="form-grid tema-grid">${CAMPOS_COR_TEMA.filter(c => c[3] === sec).map(c => htmlCampoCorTema(c[0])).join('')}</div>`;
-    const imgs = sec => `<div class="form-grid tema-grid">${CAMPOS_IMG_TEMA.filter(c => c[3] === sec).map(htmlCampoImgTema).join('')}</div>`;
+    const secao = (titulo, ajuda, html) => `<div class="tema-secao"><h4 class="font-display tema-secao-titulo">${titulo}</h4>${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda}</small>` : ''}<div class="tema-itens-grade">${html}</div></div>`;
+    const cores = sec => CAMPOS_COR_TEMA.filter(c => c[3] === sec).map(c => htmlCampoCorTema(c[0])).join('');
+    const imgs = sec => CAMPOS_IMG_TEMA.filter(c => c[3] === sec).map(htmlCampoImgTema).join('');
     modal.innerHTML = `
         <div class="modal-content" style="max-width:760px;">
             <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
@@ -13180,9 +13237,10 @@ window.abrirSeletorCor = async function(campo, ancora) {
 };
 
 // ---------- Prévia ----------
-const SITE_CLIENTES_PADRAO = 'https://favucozinha.github.io/favu/';
+// 2026-10-15: a prévia usa a cópia do site de clientes que vai dentro do painel
+// (pasta "previa/"), no mesmo endereço do painel — não depende do endereço do site.
 function urlSiteClientes() {
-    try { return localStorage.getItem('favu_site_url') || SITE_CLIENTES_PADRAO; } catch (e) { return SITE_CLIENTES_PADRAO; }
+    return new URL('previa/', location.href).href;
 }
 window.abrirPreviaTema = function(id) {
     const t = temasLista.find(x => x.id === id);
@@ -13209,11 +13267,6 @@ window.abrirPreviaTema = function(id) {
                         <button type="button" class="prod-tab-btn" data-previa-aparelho="celular" onclick="window.trocarPreviaTema('aparelho','celular')"><i class="fas fa-mobile-alt"></i> Celular</button>
                     </div>
                 </div>
-                <div class="previa-tema-url">
-                    <div><label>Endereço do site de clientes</label><input type="text" id="previa-tema-url" value="${escapeHtmlPedido(urlSiteClientes())}" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.salvarUrlPreviaTema();}">
-                    <small>O mesmo endereço em que o cardápio abre para os clientes (ex.: https://seusite.com/). Fica salvo neste navegador.</small></div>
-                    <button type="button" class="btn btn-primary" onclick="window.salvarUrlPreviaTema()">Abrir</button>
-                </div>
                 <div class="previa-tema-moldura"><iframe id="previa-tema-iframe" title="Prévia do site"></iframe></div>
             </div>
         </div>`;
@@ -13233,7 +13286,7 @@ window.trocarPreviaTema = function(tipo, valor) {
     if (tipo === 'aparelho') p.aparelho = valor;
     document.querySelectorAll('#modal-previa-tema [data-previa-pagina]').forEach(b => b.classList.toggle('active', b.dataset.previaPagina === p.pagina));
     document.querySelectorAll('#modal-previa-tema [data-previa-aparelho]').forEach(b => b.classList.toggle('active', b.dataset.previaAparelho === p.aparelho));
-    const base = (document.getElementById('previa-tema-url')?.value || urlSiteClientes()).trim().replace(/[^/]*\.html$/, '');
+    const base = urlSiteClientes();
     const url = `${base.endsWith('/') ? base : base + '/'}${p.pagina}?tema_previa=${encodeURIComponent(p.id)}&t=${Date.now()}`;
     const iframe = document.getElementById('previa-tema-iframe');
     const moldura = iframe?.parentElement;
@@ -13745,3 +13798,34 @@ setTimeout(async () => {
         window.renderCatsTable?.();
     } catch (e) {}
 }, 1200);
+
+// ---------- CUPONS: gerar código aleatório que nunca se repete (2026-10-15) ----------
+async function carregarHistoricoCupons() {
+    try {
+        const snap = await getDoc(doc(db, 'config', 'cupons_historico'));
+        return snap.exists() && Array.isArray(snap.data().codigos) ? snap.data().codigos : [];
+    } catch (e) { return []; }
+}
+async function registrarCodigoCupom(codigo) {
+    try {
+        const lista = await carregarHistoricoCupons();
+        if (lista.includes(codigo)) return;
+        lista.push(codigo);
+        await setDoc(doc(db, 'config', 'cupons_historico'), { codigos: lista, atualizadoEm: Date.now() });
+    } catch (e) { console.warn('Não foi possível registrar o código do cupom:', e); }
+}
+window.gerarCodigoCupom = async function() {
+    const historico = new Set((await carregarHistoricoCupons()).map(c => String(c).toUpperCase()));
+    (window.allCupons || []).forEach(c => historico.add(String(c.id || c.codigo || '').toUpperCase()));
+    let codigo = '';
+    for (let tentativa = 0; tentativa < 50; tentativa++) {
+        const n = new Uint32Array(2);
+        (window.crypto || window.msCrypto).getRandomValues(n);
+        // 8 dígitos aleatórios (sem sequência), começando de 1 a 9.
+        const digitos = String(10000000 + (n[0] % 90000000));
+        codigo = `FAVU${digitos}`;
+        if (!historico.has(codigo)) break;
+    }
+    const campo = document.getElementById('cupom-codigo');
+    if (campo) { campo.value = codigo; campo.focus(); }
+};

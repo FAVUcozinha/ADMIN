@@ -6046,7 +6046,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             <div class="form-grid">
                                 <div>
                                     <label>Nome do cupom</label>
-                                    <input type="text" id="cupom-codigo" placeholder="Ex: BEMVINDO" required>
+                                    <div class="cupom-codigo-linha">
+                                        <input type="text" id="cupom-codigo" placeholder="Ex: BEMVINDO" required>
+                                        <button type="button" class="btn btn-secondary" title="Gerar código aleatório" onclick="window.gerarCodigoCupom()"><i class="fas fa-random"></i> Gerar</button>
+                                    </div>
                                 </div>
                                 <div>
                                     <label>Validade</label>
@@ -12263,21 +12266,28 @@ html body #t-orcamentos #orc-menu-container .qtd-btn-table { width: 25px !import
 html body #t-orcamentos #orc-menu-container .info-box-content { font-size: 15.2px !important; }
 
 @media (max-width: 600px) {
+    /* 2026-10-15: igual ao cardápio do celular — menos apertado, letras menores e
+       ícone de foto/informação afastado das colunas de tamanho e valor. */
     html body #t-orcamentos #orc-cats-nav .categoria-btn-orc { font-size: 16px !important; }
     html body #t-orcamentos #orc-cats-nav.categorias-draggable { cursor: default !important; }
     html body #t-orcamentos #orc-menu-container { padding: 10px !important; }
     html body #t-orcamentos #orc-menu-container .categoria-title-orc { font-size: 41.6px !important; }
-    html body #t-orcamentos #orc-menu-container .table-card-orc { padding: 15px 10px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table thead th { font-size: 16px !important; padding-bottom: 12px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table td { font-size: 15.2px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table td.col-item { font-size: 17.6px !important; padding-right: 4px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec { font-size: 15.2px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .moeda { display: block !important; font-size: 12px !important; color: #46493A !important; margin-bottom: 1px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .valor { display: block !important; font-size: 13.6px !important; }
-    html body #t-orcamentos #orc-menu-container .descricao, html body #t-orcamentos #orc-menu-container .descricao-orc { font-size: 12.8px !important; }
-    html body #t-orcamentos #orc-menu-container .quantidade-input-group { gap: 2px !important; }
-    html body #t-orcamentos #orc-menu-container table.orc-table input[type="number"] { width: 34px !important; height: 28px !important; font-size: 16px !important; }
-    html body #t-orcamentos #orc-menu-container .qtd-btn-table { width: 24px !important; font-size: 20.8px !important; }
+    html body #t-orcamentos #orc-menu-container .table-card-orc { padding: 14px 12px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table thead th { font-size: 13.6px !important; padding-bottom: 10px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td { font-size: 13.6px !important; padding-top: 11px !important; padding-bottom: 11px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-item { font-size: 15.2px !important; line-height: 1.3 !important; padding-right: 4px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table th.col-item, html body #t-orcamentos #orc-menu-container table.orc-table td.col-item { width: auto !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table th.col-icon, html body #t-orcamentos #orc-menu-container table.orc-table td.col-icon { width: 34px !important; padding: 0 10px 0 4px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table th.col-sec, html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec { width: 54px !important; padding-left: 2px !important; padding-right: 2px !important; font-size: 13.6px !important; line-height: 1.2 !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-sec .peso-mobile { font-size: 10.9px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table th.col-unid, html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid { width: 62px !important; line-height: 1.2 !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .moeda { display: block !important; font-size: 10.9px !important; color: #46493A !important; margin-bottom: 1px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table td.col-unid .valor { display: block !important; font-size: 12.8px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table th.col-qtd, html body #t-orcamentos #orc-menu-container table.orc-table td.col-qtd { width: 86px !important; }
+    html body #t-orcamentos #orc-menu-container .descricao, html body #t-orcamentos #orc-menu-container .descricao-orc { font-size: 11.5px !important; }
+    html body #t-orcamentos #orc-menu-container .quantidade-input-group { gap: 3px !important; }
+    html body #t-orcamentos #orc-menu-container table.orc-table input[type="number"] { width: 30px !important; height: 26px !important; font-size: 13.6px !important; }
+    html body #t-orcamentos #orc-menu-container .qtd-btn-table { width: 22px !important; height: 26px !important; font-size: 17.6px !important; }
 }
 </style>
 
@@ -12633,6 +12643,9 @@ html body #modal-previa-tema .modal-header h3 { color: var(--favu-green) !import
 
 /* Cupons: busca na mesma linha do título; botões da janela com largura igual */
 /* Cupons: filtro e abas Ativos/Inativos iguais aos de Comunicados (mesmas classes) */
+html body #modal-cadastrar-cupom .cupom-codigo-linha { display: flex; gap: 8px; align-items: stretch; }
+html body #modal-cadastrar-cupom .cupom-codigo-linha input { flex: 1; min-width: 0; text-transform: uppercase; }
+html body #modal-cadastrar-cupom .cupom-codigo-linha .btn { flex: 0 0 auto; padding: 0 14px !important; white-space: nowrap; }
 html body #modal-cadastrar-cupom .cupom-form-actions { display: flex; gap: 10px; margin-top: 18px; }
 html body #modal-cadastrar-cupom .cupom-form-actions .btn { flex: 1; }
 @media (max-width: 600px) { html body #t-cupons .cupons-cabecalho .search-filter-actions { flex: 1 1 100% !important; } }
@@ -12657,9 +12670,32 @@ html body #t-orcamentos #orc-cats-nav.categorias-draggable.abas-cabem { justify-
 .exc-cat-opcao span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) { .exc-categorias-lista { grid-template-columns: 1fr; } }
 .campo-ajuda { display: block; color: #999; font-size: 0.78rem; font-family: var(--font-numbers); margin: -2px 0 8px; line-height: 1.4; }
+
+/* Editor de temas (2026-10-15): uma caixa igual para cada item, botões sempre embaixo */
+#modal-editor-tema .tema-itens-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; align-items: stretch; }
+#modal-editor-tema .tema-item-caixa { display: flex; flex-direction: column; min-width: 0; height: 100%; box-sizing: border-box; padding: 12px; border: 1px solid rgba(224,159,65,0.35); border-style: solid; border-radius: 12px; background: var(--favu-card); }
+#modal-editor-tema .tema-item-caixa .tema-campo-topo { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 2px; }
+#modal-editor-tema .tema-item-caixa .tema-campo-topo label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+#modal-editor-tema .tema-item-caixa .tema-badge-padrao { flex: 0 0 auto; }
+#modal-editor-tema .tema-item-caixa .tema-campo-ajuda { min-height: 2.8em; margin: 2px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#modal-editor-tema .tema-item-visual { width: 100%; height: 72px; box-sizing: border-box; border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; padding: 0; overflow: hidden; }
+#modal-editor-tema .tema-cor-visual { cursor: pointer; }
+#modal-editor-tema .tema-cor-visual span { background: rgba(255,255,255,0.88); color: #46493A; border-radius: 8px; padding: 2px 8px; font-family: var(--font-numbers); font-size: 0.75rem; }
+#modal-editor-tema .tema-img-visual { background: repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; }
+#modal-editor-tema .tema-img-visual img { max-width: 100% !important; max-height: 100% !important; margin: 0 !important; background: none !important; border-radius: 0 !important; object-fit: contain; }
+#modal-editor-tema .tema-img-vazio { color: #999; font-size: 0.75rem; font-family: var(--font-numbers); background: rgba(255,255,255,0.85); padding: 2px 8px; border-radius: 8px; }
+#modal-editor-tema .tema-item-caixa .tema-img-alerta { margin: 6px 0 0; }
+#modal-editor-tema .tema-item-acoes { margin-top: auto; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+#modal-editor-tema .tema-item-btn { width: 100%; min-height: 34px; box-sizing: border-box; margin: 0 !important; display: flex !important; align-items: center; justify-content: center; gap: 6px; border: 1px solid #ddd; background: #fff; color: var(--favu-green); border-radius: 10px; font-family: var(--font-numbers); font-size: 0.78rem; cursor: pointer; text-transform: none; }
+#modal-editor-tema .tema-item-btn-principal { background: var(--favu-green); color: #fff; border-color: var(--favu-green); }
+#modal-editor-tema .tema-item-btn:disabled { opacity: 0.45; cursor: default; }
+@media (max-width: 480px) { #modal-editor-tema .tema-itens-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } #modal-editor-tema .tema-item-caixa { padding: 10px; } }
+.tema-card-acoes { flex-wrap: nowrap !important; }
+.tema-card-acoes .btn-action.aplicar { background: var(--favu-rust) !important; color: #fff !important; border: none !important; }
+.tema-card-acoes .btn-action.aplicar:disabled { opacity: 0.4; cursor: default; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-7"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-8"></script>
 
 
     <div id="modal-gasto-item" class="modal">
