@@ -2494,7 +2494,7 @@ window.addGridRow = () => {
         <div><select class="b-cat cat-select" onchange="window.handleBulkCategoryChange(this)">${opts}</select></div>
         <div><textarea class="b-nome" rows="1" placeholder="Nome Produto"></textarea></div>
         <div><input type="number" class="b-min" value="1" style="font-family: var(--font-numbers) !important;"></div>
-        <div><textarea class="b-dmenu" rows="2" placeholder="Desc. Produto"></textarea></div><div><textarea class="b-dpop" rows="2" placeholder="Desc. Imagem"></textarea></div>
+        <div><textarea class="b-dmenu" rows="2" placeholder="Desc. Produto"></textarea></div>
         <div class="b-variations-container" style="display:flex; flex-direction:column;">
             <div class="b-var-row" style="display:flex; gap:5px; align-items:center;">
                 <input type="text" class="b-tam" placeholder="(P - 1,5KG)" style="width:60px;" disabled><input type="number" step="0.01" class="b-preco" placeholder="R$" style="width:75px; font-family: var(--font-numbers) !important;"><input type="text" class="b-dres" placeholder="Desc. Resumo" style="flex:1;">
@@ -2529,7 +2529,7 @@ window.saveBulkItems = async() => {
                     categoria: r.querySelector('.b-cat').value, 
                     min: parseInt(r.querySelector('.b-min').value)||1, 
                     descricaoItem: r.querySelector('.b-dmenu').value.trim(), 
-                    descricaoPopup: r.querySelector('.b-dpop').value.trim(), 
+                    descricaoPopup: '', 
                     imagemUrl: url, 
                     ativo: true, 
                     tamanho: vr.querySelector('.b-tam').value.trim(), 
@@ -2702,10 +2702,12 @@ window.renderProdsTable = function() {
             const todosAtivos = grupo.every(p => p.ativo);
             const ids = grupo.map(p => p.id);
             const idsAttr = ids.join(',');
+            // 2026-10-15: cada tamanho tem o seu botão discreto de visível/oculto à esquerda.
             const tamanhos = grupo.map(p => {
-                const ocultoItem = !p.ativo ? ' <span class="prod-card-tam-oculto">oculto</span>' : '';
-                return `<div class="prod-card-tam">
-                    <span class="prod-card-tam-nome">${escapeHtmlPedido(p.tamanho || (grupo.length > 1 ? '-' : 'Único'))}${ocultoItem}</span>
+                const visivel = p.ativo && categoriaVisivel;
+                return `<div class="prod-card-tam ${p.ativo ? '' : 'tam-oculto'}">
+                    <button type="button" class="prod-card-tam-toggle ${visivel ? 'on' : ''}" title="${!categoriaVisivel ? 'A categoria está oculta' : (p.ativo ? 'Visível — tocar para ocultar' : 'Oculto — tocar para mostrar')}" onclick="window.togP('${p.id}', ${!p.ativo})"><i class="fas fa-${visivel ? 'eye' : 'eye-slash'}"></i></button>
+                    <span class="prod-card-tam-nome">${escapeHtmlPedido(p.tamanho || (grupo.length > 1 ? '-' : 'Único'))}</span>
                     <span class="prod-card-tam-preco">R$ ${(Number(p.preco) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <input type="checkbox" class="row-checkbox" value="${p.id}" style="display:none;">
                 </div>`;
@@ -2718,13 +2720,11 @@ window.renderProdsTable = function() {
                     <input type="checkbox" class="bulk-checkbox prod-card-check" title="Selecionar" onchange="window.toggleSelecaoCartaoProduto(this)">
                     <div class="prod-card-nome">${window.formatText(base.nome || '')}</div>
                     <div class="prod-card-foto">${imgTag}</div>
-                    ${base.descricaoPopup ? `<div class="prod-card-legenda">${window.formatText(base.descricaoPopup)}</div>` : ''}
                     ${base.descricaoItem ? `<div class="prod-card-desc">${window.formatText(base.descricaoItem)}</div>` : ''}
                     <div class="prod-card-tams">${tamanhos}</div>
-                    <div class="prod-card-linha"><span>Status</span><span>${badgeCartao}</span></div>
+                    ${!categoriaVisivel ? `<div class="prod-card-cat-oculta">${badgeCartao}</div>` : ''}
                     <div class="action-btns-wrapper prod-card-acoes">
                         <button class="btn-action edit" title="Editar" onclick="window.openEditor('${base.id}')"><i class="fas fa-pencil-alt"></i></button>
-                        <button class="btn-action toggle" title="${!categoriaVisivel ? 'A categoria está oculta: os itens só aparecem quando ela voltar' : 'Mostrar/ocultar todos os tamanhos'}" onclick="window.togGrupoProd('${idsAttr}', ${!todosAtivos})"><i class="fas fa-${algumVisivel ? 'eye' : 'eye-slash'}"></i></button>
                         <button class="btn-action del" title="Excluir todos os tamanhos" onclick="window.delGrupoProd('${idsAttr}')"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>
@@ -2757,7 +2757,6 @@ window.renderProdsTable = function() {
                 <div class="prod-produto-box">
                     <div class="prod-produto-nome">${window.formatText(base.nome || '')}</div>
                     ${imgTag}
-                    ${base.descricaoPopup ? `<div class="prod-produto-legenda">${window.formatText(base.descricaoPopup)}</div>` : ''}
                 </div>
             </td>
             <td data-label="Categoria:" rowspan="${rs}" class="prod-grupo-cell col-categoria">${base.categoria || '-'}</td>
@@ -2793,7 +2792,7 @@ document.getElementById('form-add-prod').onsubmit = async(e) => {
         const nomeBase = document.getElementById('a-nome').value.trim();
         const categoriaBase = document.getElementById('a-cat').value;
         const descMenuBase = document.getElementById('a-dmenu').value.trim();
-        const descPopupBase = document.getElementById('a-dpop').value.trim();
+        const descPopupBase = ''; // 2026-10-15: a descrição da imagem passou a ser a própria descrição do produto
         
         // Agora lê a Descrição do Resumo do novo campo que colocamos lá em cima
         const descResumoBase = document.getElementById('a-dres').value.trim(); 
@@ -2844,7 +2843,7 @@ window.openEditor = async function(id) {
         document.getElementById('e-preco').value = Number(p.preco) || 0;
         document.getElementById('e-dmenu').value = p.descricaoItem || '';
         document.getElementById('e-dres').value = p.descricaoResumo || '';
-        document.getElementById('e-dpop').value = p.descricaoPopup || '';
+
 
         document.getElementById('e-file').value = '';
         document.getElementById('e-file-name').textContent = '';
@@ -2933,7 +2932,7 @@ document.getElementById('form-edit-prod').onsubmit = async(e) => {
             nome,
             categoria: document.getElementById('e-cat').value,
             descricaoItem,
-            descricaoPopup: document.getElementById('e-dpop').value
+            descricaoPopup: ''
         };
         const urlsEditProduto = await window.uploadProdutoImagens('e-file');
         if (urlsEditProduto.length) {
@@ -3297,7 +3296,7 @@ window.renderOrcamentoMenu = function() {
 
         listaItens.forEach((p, index) => {
             const inputHtml = `<div class="quantidade-input-group"><button type="button" class="qtd-btn-table" onclick="window.alterarQtdOrcamento('${p.id}', -1)">-</button><input type="number" value="${window.getOrcQtd(p.id)}" oninput="window.inputQtdOrcamento(this, '${p.id}')" class="quantidade-input orc-qtd-input" data-item-id="${p.id}"><button type="button" class="qtd-btn-table" onclick="window.alterarQtdOrcamento('${p.id}', 1)">+</button></div>`;
-            const iconeHint = p.imagemUrl ? `<i class="fas fa-camera foto-hint"></i>` : (p.descricaoPopup ? `<i class="fas fa-info-circle foto-hint"></i>` : '');
+            const iconeHint = p.imagemUrl ? `<i class="fas fa-camera foto-hint"></i>` : '';
             const celulaNomeHTML = `<div class="item-nome-texto" style="line-height: 1.2;">${window.formatText((p.nome || 'Sem Nome').trim())}</div>${p.descricaoItem ? `<div class="descricao descricao-orc" style="text-align: left;">${window.formatText(p.descricaoItem)}</div>` : ''}`;
             
             // Mantém a mesma apresentação do Cardápio: tamanho em duas linhas quando houver peso, ex.: P / (1 kg).
@@ -3352,7 +3351,7 @@ window.renderOrcamentoMenu = function() {
         }
         
         // Igual ao cardápio: comunicado da categoria embaixo da tabela.
-        if (catObj.mensagemObs && String(catObj.mensagemObs).trim()) htmlFull += `<div class="info-box"><div class="info-box-content">${window.formatText(catObj.mensagemObs)}</div></div>`;
+        if (catObj.mensagemObs && String(catObj.mensagemObs).trim()) htmlFull += `<div class="info-box"><div class="info-box-content">${sanitizeRichText(catObj.mensagemObs)}</div></div>`;
         htmlFull += `</div>`; 
         container.innerHTML += htmlFull;
     });
@@ -13149,17 +13148,33 @@ function liberarRolagemGastosMobile() {
     });
 }
 
-// Computador/tablet: a linha de total fica fixa no rodapé da tela, alinhada
-// com as colunas da tabela que está aberta (Tabela ou Lista).
+// Computador/tablet: a linha de total vira o rodapé (tfoot) da própria tabela,
+// fora da área que rola — as linhas rolam acima dela e nunca por trás.
+// No celular ela volta para o tbody e fica como a barra fixa de antes.
 function posicionarTotaisGastos() {
-    const linhas = document.querySelectorAll('#gastos-planilha-body > tr.gastos-rebuild-total-row, #gastos-lancamentos-lista-body > tr.gastos-lancamentos-total-row');
-    linhas.forEach(tr => {
-        if (MOBILE_GASTOS()) { tr.style.removeProperty('left'); tr.style.removeProperty('width'); return; }
-        const tabela = tr.closest('table');
-        const r = tabela ? tabela.getBoundingClientRect() : null;
-        if (!r || !r.width) return;
-        tr.style.setProperty('left', `${r.left}px`, 'important');
-        tr.style.setProperty('width', `${r.width}px`, 'important');
+    [['gastos-planilha-body', 'tr.gastos-rebuild-total-row'], ['gastos-lancamentos-lista-body', 'tr.gastos-lancamentos-total-row']].forEach(([id, sel]) => {
+        const body = document.getElementById(id);
+        const tabela = body?.closest('table');
+        if (!tabela) return;
+        let tfoot = tabela.querySelector(':scope > tfoot.gastos-total-tfoot');
+        const linhaNoBody = body.querySelector(`:scope > ${sel}`);
+        if (MOBILE_GASTOS()) {
+            if (tfoot) {
+                const tr = tfoot.querySelector(sel);
+                if (tr && !linhaNoBody) body.appendChild(tr);
+                tfoot.remove();
+            }
+            return;
+        }
+        if (!tfoot) { tfoot = document.createElement('tfoot'); tfoot.className = 'gastos-total-tfoot'; tabela.appendChild(tfoot); }
+        if (linhaNoBody) {
+            linhaNoBody.style.removeProperty('left');
+            linhaNoBody.style.removeProperty('width');
+            tfoot.innerHTML = '';
+            tfoot.appendChild(linhaNoBody);
+        } else if (!body.querySelector(':scope > tr')) {
+            tfoot.innerHTML = '';
+        }
     });
 }
 window.posicionarTotaisGastos = posicionarTotaisGastos;

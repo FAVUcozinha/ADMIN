@@ -5949,12 +5949,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
             </div>
 
             <div id="t-tema" class="tab-pane">
-                <div class="temas-header">
-                    <h2 class="font-display" style="color: var(--favu-rust); margin: 10px 0 0; font-size: 2rem;">Temas do Site</h2>
-                    <button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button>
+                <!-- 2026-10-15: mesmo padrão da aba Categorias (botão à direita + cartão de título) -->
+                <div class="buttons-area"><button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button></div>
+                <div class="panel-card aba-titulo-card">
+                    <h2 class="font-display">Temas do Site</h2>
+                    <p class="aba-titulo-ajuda">Cadastre os temas com antecedência (ex.: Natal) e troque os dois sites com um clique em <strong>Aplicar</strong>.</p>
                 </div>
-                <p class="temas-ajuda">Cadastre os temas com antecedência (ex.: Natal) e troque o site inteiro com um clique em <strong>Aplicar</strong>. Campos de imagem em branco usam as imagens padrão do site.</p>
-                <div id="lista-temas" class="temas-grid"></div>
+                <div id="lista-temas" class="temas-grid panel-card"></div>
                 <form id="form-cores" class="form-grid panel-card" style="display:none;">
                     <div><label>Fundo Principal</label><input type="color" id="cor-bg" value="#F4E6CB"></div>
                     <div><label>Fundo de Caixas/Menus</label><input type="color" id="cor-card" value="#FFF5EB"></div>
@@ -5963,7 +5964,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     <button type="submit" class="btn btn-primary" style="grid-column: 1 / -1;">Salvar</button>
                 </form>
 
-                <h2 class="font-display" style="color: var(--favu-rust); margin-top: 40px; margin-bottom: 20px; font-size: 2rem;">Imagens do Carrossel</h2>
+                <div class="panel-card aba-titulo-card" style="margin-top: 30px;">
+                    <h2 class="font-display">Imagens do Carrossel</h2>
+                    <p class="aba-titulo-ajuda">Fotos da página inicial. Arraste para mudar a ordem e clique em <strong>Salvar ordem</strong>.</p>
+                </div>
                 <form id="form-carrossel" class="panel-card" style="display:flex; flex-direction: column; gap:15px;">
                     <div>
                         <label>Enviar Fotos Novas (Múltiplas permitidas)</label>
@@ -6131,20 +6135,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
             <div id="t-gastos" class="tab-pane gastos-rebuild-pane">
                 <div class="buttons-area gastos-rebuild-buttons">
-                    <button class="btn btn-outline gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()" style="background: var(--favu-moss) !important;"><i class="fas fa-layer-group"></i> Lançar gastos</button>
+                    <button class="btn btn-primary gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()"><i class="fas fa-layer-group"></i> Lançar gastos</button>
                 </div>
 
-                <!-- 2026-10-15: Marcas e Produtos com o mesmo visual de Tabela e Lista.
+                <!-- 2026-10-15: Tabela, Lista, Marcas e Produtos num grupo só, com o mesmo visual.
                      No celular ficam 2 em cima e 2 embaixo. -->
-                <div class="gastos-abas-linha">
-                    <div class="prod-tabs gastos-subtabs gastos-gerenciar-tabs">
-                        <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
-                        <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Produtos</button>
-                    </div>
-                    <div class="prod-tabs gastos-subtabs">
-                        <button type="button" class="prod-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')"><i class="fas fa-table"></i> Tabela</button>
-                        <button type="button" class="prod-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')"><i class="fas fa-list"></i> Lista</button>
-                    </div>
+                <div class="prod-tabs gastos-subtabs gastos-abas-4">
+                    <button type="button" class="prod-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')"><i class="fas fa-table"></i> Tabela</button>
+                    <button type="button" class="prod-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')"><i class="fas fa-list"></i> Lista</button>
+                    <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
+                    <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Produtos</button>
                 </div>
 
                 <div class="panel-card gastos-rebuild-header">
@@ -6482,10 +6482,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             </div>
                             <span id="a-file-name" class="file-name-display" style="text-align: left;"></span><div id="a-file-list" class="upload-image-list"></div>
                         </div>
-                        <div class="produto-descricao-imagem-field">
-                            <label>Descrição da imagem</label>
-                            <textarea id="a-dpop" rows="4" style="height: calc(100% - 25px);"></textarea>
-                        </div>
                     </div>
 
                     <h4 class="font-display" style="color: var(--favu-moss); margin-top: 20px; margin-bottom: 10px; font-size: 1.5rem; border-bottom: 1px dashed #ccc; padding-bottom: 5px;">Tamanhos e Valores</h4>
@@ -6529,10 +6525,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             </div>
                             <label class="custom-file-upload" style="padding: 8px 12px; font-size: 0.9rem;"><i class="fas fa-camera"></i> Alterar Fotos<input type="file" id="e-file" accept="image/*" multiple onchange="window.adicionarImagensUpload('e-file');"></label>
                             <span id="e-file-name" class="file-name-display"></span><div id="e-file-list" class="upload-image-list"></div><input type="hidden" id="e-remove-img" value="false">
-                        </div>
-                        <div class="produto-descricao-imagem-field">
-                            <label>Descrição da imagem</label>
-                            <textarea id="e-dpop" rows="4" style="height: calc(100% - 25px);"></textarea>
                         </div>
                     </div>
 
@@ -12296,7 +12288,10 @@ html body #t-orcamentos #orc-menu-container .info-box-content { font-size: 15.2p
 #tbl-produtos .prod-produto-box { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 #tbl-produtos .prod-produto-nome { color: var(--favu-rust); font-weight: bold; font-size: 1.05rem; line-height: 1.2; }
 #tbl-produtos .prod-produto-legenda { font-size: 0.75rem; color: #777; line-height: 1.3; max-width: 170px; }
-html body .prod-table-carousel, html body #tbl-produtos .admin-auto-carousel { width: 78px !important; height: 78px !important; }
+html body .prod-table-carousel, html body #tbl-produtos .admin-auto-carousel,
+html body #tbl-produtos .prod-produto-box .admin-auto-carousel-empty { width: 101px !important; height: 101px !important; min-width: 101px !important; border-radius: 12px !important; overflow: hidden; }
+html body #tbl-produtos .prod-produto-box .admin-auto-carousel-empty i { font-size: 1.8rem; }
+#tbl-produtos th.prod-th-produto { width: 210px !important; }
 #tbl-produtos tbody tr.prod-grupo-nao-ultimo { border-bottom: none !important; }
 #tbl-produtos tbody tr.prod-grupo-nao-ultimo > td:not(.prod-grupo-cell) { border-bottom: none !important; }
 #tbl-produtos tbody tr.prod-grupo-continuacao { border-top: none !important; }
@@ -12317,9 +12312,16 @@ html body .prod-table-carousel, html body #tbl-produtos .admin-auto-carousel { w
 .prod-card-mobile .prod-card-check { position:absolute; top:12px; right:12px; width:20px; height:20px; margin:0; padding:0; z-index:3; accent-color:#E09F41; opacity:.85; }
 .prod-card-nome { text-align:center; color:var(--favu-rust); font-family:'Basic Choice', cursive; font-size:1.3rem; line-height:1.2; text-transform:uppercase; padding:0 26px; margin-bottom:10px; }
 .prod-card-foto { display:flex; justify-content:center; margin:0 0 6px; }
-.prod-card-foto .admin-auto-carousel, html body #tbl-produtos .prod-card-foto .admin-auto-carousel { width:228px !important; height:228px !important; max-width:100%; margin:0 auto; border-radius:14px; overflow:hidden; position:relative; }
+.prod-card-foto .admin-auto-carousel, html body #tbl-produtos .prod-card-foto .admin-auto-carousel,
+html body #tbl-produtos .prod-card-foto .prod-card-sem-foto { width:min(296px, 100%) !important; height:auto !important; aspect-ratio:1 / 1; max-width:100%; margin:0 auto; border-radius:14px; overflow:hidden; position:relative; }
 .prod-card-foto .admin-auto-carousel img { width:100% !important; height:100% !important; object-fit:cover; }
-.prod-card-sem-foto { width:156px; height:156px; border-radius:14px; background:#f1f1f1; color:#ccc; font-size:2.4rem; display:flex; align-items:center; justify-content:center; }
+.prod-card-sem-foto { border-radius:14px; background:#f1f1f1; color:#ccc; font-size:3rem; display:flex; align-items:center; justify-content:center; }
+.prod-card-tam { gap:10px; }
+.prod-card-tam .prod-card-tam-nome { flex:1; }
+.prod-card-tam-toggle { flex:0 0 auto; width:30px; height:30px; border-radius:50%; border:1px solid rgba(29,40,20,0.2); background:#fff; color:#aaa; display:inline-flex; align-items:center; justify-content:center; font-size:0.8rem; padding:0; cursor:pointer; }
+.prod-card-tam-toggle.on { color:#28a745; border-color:rgba(40,167,69,0.45); background:rgba(40,167,69,0.06); }
+.prod-card-tam.tam-oculto .prod-card-tam-nome, .prod-card-tam.tam-oculto .prod-card-tam-preco { opacity:.45; }
+.prod-card-cat-oculta { text-align:center; margin:8px 0 2px; }
 .prod-card-legenda { text-align:center; color:#777; font-size:0.8rem; font-style:italic; margin:2px 10px 6px; }
 .prod-card-desc { text-align:center; color:#46493A; font-size:0.8rem; margin-top:6px; }
 .prod-card-tams { margin:12px 0 6px; border-top:1px solid rgba(224,159,65,0.35); }
@@ -12348,26 +12350,13 @@ html body .prod-table-carousel, html body #tbl-produtos .admin-auto-carousel { w
 .carrossel-upload-previa img { width:100%; height:100%; object-fit:cover; display:block; }
 .carrossel-upload-previa button { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:0.75rem; cursor:pointer; padding:0; }
 
-/* E: botões Marcas/Produtos com o visual de Tabela/Lista */
-#t-gastos .gastos-abas-linha { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:15px; }
-#t-gastos .gastos-abas-linha .gastos-subtabs { margin-bottom:0 !important; display:flex; gap:8px; flex-wrap:nowrap; overflow:visible; padding-bottom:0; }
+/* E: Tabela, Lista, Marcas e Produtos num grupo só */
+#t-gastos .gastos-abas-4 { display:flex !important; gap:8px; flex-wrap:nowrap; margin-bottom:15px !important; overflow:visible !important; padding-bottom:0 !important; }
+#t-gastos .gastos-abas-4 .gastos-subtab-btn { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
 @media (max-width: 600px) {
-    #t-gastos .gastos-abas-linha { flex-direction:column; align-items:stretch; gap:8px; }
-    #t-gastos .gastos-abas-linha .gastos-subtabs { width:100%; }
-    #t-gastos .gastos-abas-linha .gastos-subtab-btn { flex:1 1 50%; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 8px; }
+    #t-gastos .gastos-abas-4 { display:grid !important; grid-template-columns:1fr 1fr; gap:8px; }
+    #t-gastos .gastos-abas-4 .gastos-subtab-btn { width:100%; padding:10px 8px; }
 }
-
-/* G: editor de temas com seções */
-#modal-editor-tema .tema-secao { border:1px solid rgba(224,159,65,0.35); border-radius:14px; padding:14px; margin-bottom:14px; background:rgba(224,159,65,0.04); }
-#modal-editor-tema .tema-secao-titulo { color:var(--favu-rust); font-size:1.3rem; margin:0 0 2px; }
-#modal-editor-tema .tema-secao-ajuda { display:block; color:#999; font-size:0.78rem; margin-bottom:10px; font-family:var(--font-numbers); }
-#modal-editor-tema .tema-cor-campo label { font-size:0.85rem; }
-#modal-editor-tema .tema-cor-linha { display:flex; gap:6px; align-items:center; }
-#modal-editor-tema .tema-cor-linha input[type="color"] { flex:1; min-width:0; height:40px; padding:2px; }
-#modal-editor-tema .tema-cor-reset { border:1px solid #ddd; background:#fff; border-radius:8px; padding:8px 10px; font-size:0.75rem; color:#777; cursor:pointer; font-family:var(--font-numbers); }
-#modal-editor-tema .tema-cor-campo.padrao input[type="color"] { opacity:.35; }
-#modal-editor-tema .tema-cor-campo.padrao .tema-cor-reset { background:var(--favu-green); color:#fff; border-color:var(--favu-green); }
-#modal-editor-tema .tema-img-campo img { max-width:100%; max-height:70px; object-fit:contain; display:block; margin:6px 0; background:repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50%/16px 16px; border-radius:8px; }
 
 /* E: cadastrar marca/produto nas janelas */
 .gasto-novo-cadastro { display:flex; gap:8px; margin:0 0 12px; }
@@ -12402,19 +12391,33 @@ html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: now
 /* E: computador e tablet — tabelas sempre cabem na largura e total fixo no rodapé */
 @media (min-width: 901px) {
     html body #t-gastos .gastos-rebuild-table-card { overflow-x: hidden !important; }
+    /* Tablets (901–1024px): a regra geral do painel transforma tabelas em cartões; nos gastos fica tabela. */
+    html body #t-gastos table.gastos-rebuild-table { display: block !important; }
+    html body #t-gastos table.gastos-rebuild-table > thead { display: table !important; width: 100% !important; table-layout: fixed !important; }
+    html body #t-gastos table.gastos-rebuild-table > thead > tr { display: table-row !important; }
+    html body #t-gastos table.gastos-rebuild-table > thead > tr > th { display: table-cell !important; }
+    html body #t-gastos table.gastos-rebuild-table > tbody { display: block !important; }
+    html body #t-gastos table.gastos-rebuild-table > tbody > tr { display: table !important; width: 100% !important; table-layout: fixed !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; }
+    html body #t-gastos table.gastos-rebuild-table > tbody > tr > td { display: table-cell !important; text-align: center; }
+    html body #t-gastos table.gastos-rebuild-table > tbody > tr > td::before { content: none !important; display: none !important; }
+    html body #t-gastos table.gastos-rebuild-table > tfoot > tr > td { display: table-cell !important; }
+    html body #t-gastos table.gastos-rebuild-table > tfoot > tr > td::before { content: none !important; display: none !important; }
     html body #t-gastos table.gastos-rebuild-table { min-width: 0 !important; width: 100% !important; }
     /* Tabela (12 meses) */
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(1),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tfoot > tr > td:nth-child(1),
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(1) { width: 15% !important; min-width: 0 !important; max-width: none !important; }
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(n+2):nth-child(-n+13),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tfoot > tr > td:nth-child(n+2):nth-child(-n+13),
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(n+2):nth-child(-n+13) { width: 6.5% !important; min-width: 0 !important; max-width: none !important; padding-left: 2px !important; padding-right: 2px !important; }
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > thead > tr > th:nth-child(14),
+    html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tfoot > tr > td:nth-child(14),
     html body #t-gastos #gastos-painel-resumo table.gastos-rebuild-table > tbody > tr > td:nth-child(14) { width: 7% !important; min-width: 0 !important; max-width: none !important; padding-left: 4px !important; padding-right: 4px !important; }
     html body #t-gastos #gastos-painel-resumo .gastos-rebuild-money { font-size: 0.78rem !important; white-space: nowrap !important; }
     html body #t-gastos #gastos-painel-resumo .gastos-rebuild-qty { font-size: 0.68rem !important; }
     html body #t-gastos #gastos-painel-resumo .gastos-item-nome-inline { width: 100% !important; min-width: 0 !important; }
-    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions { flex-wrap: wrap !important; justify-content: center !important; gap: 4px !important; }
-    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions .btn-action { width: 30px !important; height: 30px !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions { flex-wrap: nowrap !important; flex-direction: row !important; justify-content: center !important; gap: 4px !important; }
+    html body #t-gastos #gastos-painel-resumo .gastos-rebuild-row-actions .btn-action { width: 26px !important; height: 26px !important; min-width: 0 !important; padding: 0 !important; font-size: 0.75rem !important; }
     /* Lista (12 colunas) */
     html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > thead > tr > th,
     html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > tbody > tr > td { min-width: 0 !important; max-width: none !important; padding-left: 4px !important; padding-right: 4px !important; overflow-wrap: anywhere; white-space: normal !important; font-size: 0.82rem; }
@@ -12429,25 +12432,70 @@ html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: now
     html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(8) { width: 8% !important; }
     html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(9) { width: 7% !important; }
     html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(10) { width: 5% !important; }
-    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(11) { width: 10% !important; }
-    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(12) { width: 8% !important; }
-    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > tbody > tr.gastos-lancamentos-total-row > td:first-child { width: 92% !important; }
-    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper { flex-wrap: wrap !important; justify-content: center !important; gap: 4px !important; }
-    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper .btn-action { width: 28px !important; height: 28px !important; }
-    /* Totais fixos no rodapé da tela (o JS alinha com a tabela aberta) */
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row,
-    html body #t-gastos #gastos-painel-lancamentos .gastos-lancamentos-total-row { position: fixed !important; bottom: 12px !important; left: 25px; width: calc(100% - 50px); z-index: 950 !important; border-radius: 12px !important; overflow: hidden !important; box-shadow: 0 6px 22px rgba(0,0,0,0.28) !important; display: table !important; table-layout: fixed !important; }
-    html body #t-gastos #gastos-painel-lancamentos .gastos-lancamentos-total-row td { position: static !important; }
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td { padding-top: 14px !important; padding-bottom: 14px !important; }
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row > td:first-child { font-family: 'Basic Choice', cursive !important; font-weight: 400 !important; font-size: 1.05rem !important; text-transform: uppercase !important; padding-left: 15px !important; }
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-rebuild-month-cell span { font-size: 0.78rem !important; white-space: nowrap !important; }
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-total-anual-geral small { font-size: 0.6rem !important; display: block; }
-    html body #t-gastos #gastos-planilha-body > tr.gastos-rebuild-total-row .gastos-total-anual-geral strong { font-size: 0.78rem !important; white-space: nowrap; }
-    html body #t-gastos #gastos-planilha-body, html body #t-gastos #gastos-lancamentos-lista-body { padding-bottom: 80px !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(11) { width: 8% !important; }
+    html body #t-gastos #gastos-painel-lancamentos table.gastos-rebuild-table > * > tr > :nth-child(12) { width: 10% !important; }
+    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper { flex-wrap: nowrap !important; flex-direction: row !important; justify-content: center !important; gap: 3px !important; }
+    html body #t-gastos #gastos-painel-lancamentos .action-btns-wrapper .btn-action { width: 26px !important; height: 26px !important; min-width: 0 !important; padding: 0 !important; font-size: 0.75rem !important; }
+    /* Totais: rodapé da própria tabela (fora da área que rola). Tabela e Lista com o mesmo visual. */
+    html body #t-gastos table.gastos-rebuild-table > tfoot.gastos-total-tfoot { display: table !important; width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr { display: table-row !important; position: static !important; box-shadow: none !important; background: transparent !important; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td { position: static !important; background: var(--favu-green) !important; color: #fff !important; border: none !important; border-top: 3px solid var(--favu-rust) !important; padding: 14px 4px !important; vertical-align: middle !important; text-align: center !important; font-family: var(--font-numbers) !important; font-weight: 700 !important; font-size: 0.8rem !important; white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td * { color: #fff !important; font-size: inherit; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td:first-child { text-align: left !important; padding-left: 15px !important; font-family: 'Basic Choice', cursive !important; font-weight: 400 !important; font-size: 1.05rem !important; text-transform: uppercase !important; border-bottom-left-radius: 12px; }
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td:last-child { border-bottom-right-radius: 12px; }
+    html body #t-gastos #gastos-painel-lancamentos tfoot.gastos-total-tfoot > tr > td:last-child { text-align: right !important; padding-right: 15px !important; font-size: 1.1rem !important; }
+    html body #t-gastos #gastos-painel-lancamentos tfoot.gastos-total-tfoot > tr > td:first-child { width: 75% !important; }
+    html body #t-gastos #gastos-painel-lancamentos tfoot.gastos-total-tfoot > tr > td:last-child { width: 25% !important; overflow: visible !important; text-overflow: clip !important; }
+    html body #t-gastos #gastos-painel-resumo tfoot .gastos-total-anual-geral small { display: block; font-size: 0.6rem !important; font-weight: 400; }
 }
+
+/* =====================================================================
+   PADRÃO DAS ABAS (2026-10-15) — tudo segue a aba Categorias:
+   contêiner claro, botão principal laranja à direita, cartões brancos,
+   títulos verdes em Basic Choice, rótulos e campos iguais, alternâncias
+   (Ativos/Inativos, Tabela/Lista...) em formato de pílula.
+   ===================================================================== */
+html body .tab-pane { width: auto !important; max-width: 100% !important; box-sizing: border-box !important; }
+/* Gastos e Cupons ficam fora da .admin-wrapper no HTML: mesma margem das outras abas */
+html body #admin-panel > .tab-pane, html body #admin-panel > #t-gastos.tab-pane, html body #admin-panel > #t-cupons.tab-pane { margin-left: 15px !important; margin-right: 15px !important; left: auto !important; width: auto !important; max-width: 1470px !important; }
+@media (min-width: 1500px) { html body #admin-panel > .tab-pane { margin-left: auto !important; margin-right: auto !important; } }
+html body .tab-pane .buttons-area { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+
+/* Cartão de título */
+html body .tab-pane .aba-titulo-card { padding: 15px 20px !important; margin-bottom: 20px; }
+html body .tab-pane .aba-titulo-card h2.font-display { margin: 0 !important; font-size: 1.8rem !important; color: var(--favu-green) !important; }
+html body .tab-pane .aba-titulo-ajuda { margin: 6px 0 0; color: #777; font-size: 0.85rem; font-family: var(--font-numbers); }
+html body #t-pedidos .header-pedidos-moderno { background: #fff; border: 1px solid #eee; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 15px 20px; margin-bottom: 20px; }
+html body #t-pedidos .header-pedidos-moderno h2.font-display { color: var(--favu-green) !important; font-size: 1.8rem !important; margin: 0 !important; }
+
+/* Títulos: verdes. Página = 1.8rem; seção dentro de cartão = 1.4rem */
+html body .tab-pane .panel-card > h2.font-display, html body .tab-pane h2.cupom-title { color: var(--favu-green) !important; font-size: 1.8rem !important; }
+html body .tab-pane .cupom-section-title, html body .tab-pane .agenda-title, html body .tab-pane .panel-card > h3.font-display { color: var(--favu-green) !important; font-size: 1.4rem !important; font-family: 'Basic Choice', cursive !important; font-weight: 400 !important; margin: 0 0 15px !important; }
+html body .tab-pane .agenda-title i, html body .tab-pane h2.cupom-title i { color: var(--favu-rust); }
+
+/* Rótulos dos formulários iguais aos das janelas (Basic Choice) */
+html body .tab-pane .panel-card label:not(.custom-file-upload):not(.agenda-dia-label):not(.switch):not([class*="toggle"]) { font-family: 'Basic Choice', cursive !important; color: #46493A !important; font-size: 0.95rem !important; font-weight: 400 !important; text-transform: none !important; }
+
+/* Campos */
+html body .tab-pane .panel-card input[type="text"]:not(.search-bar), html body .tab-pane .panel-card input[type="number"], html body .tab-pane .panel-card input[type="date"],
+html body .tab-pane .panel-card input[type="time"], html body .tab-pane .panel-card select, html body .tab-pane .panel-card textarea { border-radius: 10px !important; border: 1px solid rgba(224,159,65,0.35) !important; background: #fff !important; font-family: var(--font-numbers) !important; }
+html body .tab-pane .search-bar { border-radius: 30px !important; border: 2px solid var(--favu-rust) !important; }
+
+/* Alternâncias em pílula (como as abas de categoria dos produtos) */
+html body .tab-pane .avisos-tab-btn, html body .tab-pane .cupons-tab-btn, html body .tab-pane .excecoes-tab-btn, html body .tab-pane .prod-tab-btn {
+    border-radius: 30px !important; padding: 10px 20px !important; font-family: 'Basic Choice', cursive !important; font-size: 0.9rem !important; font-weight: 400 !important; text-transform: uppercase !important;
+    background: #fff !important; color: var(--favu-green) !important; border: 1px solid rgba(29,40,20,0.15) !important; box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; }
+html body .tab-pane .avisos-tab-btn.active, html body .tab-pane .cupons-tab-btn.active, html body .tab-pane .excecoes-tab-btn.active, html body .tab-pane .prod-tab-btn.active {
+    background: var(--favu-green) !important; color: #fff !important; border-color: var(--favu-green) !important; }
+
+/* Botão principal da aba sempre laranja */
+html body .tab-pane .buttons-area .btn-primary, html body #t-gastos .gastos-rebuild-new-btn { background: var(--favu-rust) !important; color: #fff !important; border: none !important; }
+
+/* Lista de temas dentro de cartão branco */
+html body #t-tema #lista-temas.panel-card { padding: 20px !important; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-4"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-5"></script>
 
 
     <div id="modal-gasto-item" class="modal">
@@ -12496,7 +12544,7 @@ html body #modal-gastos-lote .gastos-lote-campos-unicos label { white-space: now
                         </div>
                     </div>
                     <div>
-                        <label>Itens <small>(nº de linhas)</small></label>
+                        <label>Itens</label>
                         <input type="number" id="gasto-lote-qtd-linhas" min="1" max="100" value="1" onchange="window.definirQtdLinhasGastoLote(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}">
                     </div>
                     <div>
