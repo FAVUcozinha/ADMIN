@@ -5848,7 +5848,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div id="prod-cats-nav" class="prod-tabs"></div>
                 <div class="panel-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
                     <h2 class="font-display" style="margin: 0; font-size: 1.8rem; color: var(--favu-green);">Produtos Cadastrados</h2>
-                    <input type="text" id="search-prod" class="search-bar" style="margin: 0; max-width: 320px;" placeholder="🔍 Buscar em todos os campos...">
+                    <div class="search-filter-actions">
+                        <input type="text" id="search-prod" class="search-bar" style="margin: 0;" placeholder="Buscar produto...">
+                        <button type="button" class="btn btn-outline btn-clear-filter" onclick="const c=document.getElementById('search-prod'); c.value=''; c.dispatchEvent(new Event('input', { bubbles: true })); window.renderProdsTable && window.renderProdsTable();"><i class="fas fa-eraser"></i> Limpar Filtros</button>
+                    </div>
                 </div>
                 <div id="bulk-actions-produtos" class="bulk-actions-bar">
                     <span style="font-family: 'Basic Choice', cursive !important; font-size: 1rem; color: var(--favu-rust);"><strong id="count-produtos">0</strong> itens selecionados</span>
@@ -5909,7 +5912,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
             </div>
 
             <div id="t-avisos" class="tab-pane">
-                <div class="buttons-area"><button class="btn btn-primary" onclick="window.openModal('modal-add-aviso')"><i class="fas fa-bullhorn"></i> Criar Comunicado</button></div>
+                <div class="buttons-area"><button class="btn btn-primary" onclick="window.openModal('modal-add-aviso')"><i class="fas fa-plus"></i> Criar Comunicado</button></div>
                 <div class="panel-card aviso-list-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
                     <h2 class="font-display" style="margin: 0; font-size: 1.8rem; color: var(--favu-green);">Comunicados Cadastrados</h2>
                     <div class="search-filter-actions">
@@ -6154,7 +6157,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
             <div id="t-gastos" class="tab-pane gastos-rebuild-pane">
                 <div class="buttons-area gastos-rebuild-buttons">
-                    <button class="btn btn-primary gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()"><i class="fas fa-layer-group"></i> Lançar gastos</button>
+                    <button class="btn btn-primary gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()"><i class="fas fa-plus"></i> Lançar gastos</button>
                 </div>
 
                 <!-- 2026-10-15: mesmo padrão de Cupons — título da aba e Tabela/Lista como
@@ -6290,31 +6293,31 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div class="panel-card agenda-form-card" data-painel-horarios="atendimento">
                     <div class="agenda-dias-grade">
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-1-ativo"><span>Seg</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-1-ativo"><span>Segunda</span></label>
                             <input type="text" id="dia-1-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-2-ativo"><span>Ter</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-2-ativo"><span>Terça</span></label>
                             <input type="text" id="dia-2-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-3-ativo"><span>Qua</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-3-ativo"><span>Quarta</span></label>
                             <input type="text" id="dia-3-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-4-ativo"><span>Qui</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-4-ativo"><span>Quinta</span></label>
                             <input type="text" id="dia-4-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-5-ativo"><span>Sex</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-5-ativo"><span>Sexta</span></label>
                             <input type="text" id="dia-5-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-6-ativo"><span>Sáb</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-6-ativo"><span>Sábado</span></label>
                             <input type="text" id="dia-6-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                         <div class="agenda-dia-caixa">
-                            <label class="agenda-dia-label"><input type="checkbox" id="dia-0-ativo"><span>Dom</span></label>
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-0-ativo"><span>Domingo</span></label>
                             <input type="text" id="dia-0-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                     </div>
@@ -12911,7 +12914,7 @@ html body #t-gastos .gastos-tabs-tl .avisos-tab-btn, html body #t-horarios .hora
 html body .tab-pane .avisos-tabs { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 18px !important; }
 html body .tab-pane .avisos-tabs .avisos-tab-btn { width: 100% !important; }
 /* Campos de busca no modelo de Cupons */
-html body #gastos-busca, html body #search-input-pedidos, html body .tab-pane .search-bar { border: 2px solid var(--favu-rust) !important; border-radius: 30px !important; padding: 10px 16px !important; background: #fff !important; height: 42px !important; box-sizing: border-box !important; font-family: var(--font-numbers) !important; }
+
 /* Gastos: Marcas, Itens, Local e Exportar — 4 iguais ocupando a linha */
 html body #t-gastos .gastos-gerenciar { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 html body #t-gastos .gastos-gerenciar .btn { width: 100% !important; justify-content: center !important; min-height: 42px; }
@@ -12928,27 +12931,14 @@ html body #t-gastos #gastos-filtro-busca-wrap { order: 3; }
     html body #t-gastos #filter-bar-gastos #gastos-filtro-busca-wrap { flex: 1 1 auto !important; width: auto !important; }
     html body #t-gastos #filter-bar-gastos .filter-group-additional { margin-left: 0 !important; flex: 0 0 auto !important; }
 }
-/* Pedidos: filtros à esquerda; Buscar à esquerda do Limpar filtros */
-@media (min-width: 901px) {
-    html body #t-pedidos #filter-bar-pedidos { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; gap: 10px !important; }
-    html body #t-pedidos #filter-bar-pedidos .filter-group-main, html body #t-pedidos #filter-bar-pedidos .filter-group-additional { display: contents !important; }
-    html body #t-pedidos #filter-bar-pedidos .filter-item { width: 180px !important; flex: 0 0 180px !important; margin: 0 !important; }
-    html body #t-pedidos #filter-bar-pedidos .filtro-busca-direita { margin-left: auto !important; flex: 0 1 300px !important; width: 300px !important; }
-    html body #t-pedidos #filter-bar-pedidos .filter-item:last-child { width: auto !important; flex: 0 0 auto !important; }
-}
 /* Horários: caixas de tamanho padrão */
 html body #t-horarios .painel-oculto { display: none !important; }
-html body #t-horarios .agenda-dias-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
-html body #t-horarios .agenda-dia-caixa { display: flex; flex-direction: column; gap: 10px; height: 118px; box-sizing: border-box; padding: 14px; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); }
-html body #t-horarios .agenda-dia-caixa .agenda-dia-label { display: flex; align-items: center; gap: 8px; font-family: 'Basic Choice', cursive; font-size: 1.1rem; color: var(--favu-green); text-transform: uppercase; margin: 0; }
-html body #t-horarios .agenda-dia-caixa .agenda-dia-label input { width: 18px; height: 18px; accent-color: var(--favu-rust); margin: 0; }
+
 html body #t-horarios .agenda-dia-caixa input[type="text"] { width: 100%; box-sizing: border-box; }
 html body #t-horarios .agenda-save-btn { width: 100%; }
 html body #t-horarios .agenda-datas-bloco { margin-bottom: 18px; }
 html body #t-horarios .excecoes-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-html body #t-horarios .excecoes-grade .excecao-card { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; height: 150px; box-sizing: border-box; padding: 14px; margin: 0 !important; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); cursor: pointer; overflow: hidden; }
-html body #t-horarios .excecoes-grade .excecao-card-resumo { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.85rem; }
-html body #t-horarios .excecoes-grade .excecao-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
 html body #t-horarios .excecoes-vazio { color: #888; font-size: 0.9rem; font-family: var(--font-numbers); margin: 0; }
 @media (max-width: 600px) {
     html body #t-horarios .agenda-dias-grade, html body #t-horarios .excecoes-grade { grid-template-columns: 1fr; }
@@ -12967,9 +12957,85 @@ html body #t-horarios .excecoes-vazio { color: #888; font-size: 0.9rem; font-fam
     html body #modal-editor-tema .tema-editor-previa { height: 62vh !important; flex: 0 0 62vh !important; }
     #modal-editor-tema .tema-previa-moldura { height: calc(62vh - 50px); flex: none; }
 }
+
+/* 2026-10-15 (15) */
+/* Abas fora da .admin-wrapper (Gastos, Cupons, Horários): centralizadas como as outras */
+@media (min-width: 1500px) {
+    html body #admin-panel > .tab-pane, html body #admin-panel > #t-gastos.tab-pane, html body #admin-panel > #t-cupons.tab-pane, html body #admin-panel > #t-horarios.tab-pane { margin-left: auto !important; margin-right: auto !important; width: 1470px !important; }
+}
+/* Títulos das abas: mesmo tamanho; à esquerda no computador e centralizados no celular */
+html body .tab-pane .aba-titulo-card h2.font-display, html body .tab-pane .panel-card > h2.font-display, html body #t-cupons .cupons-cabecalho h2.font-display, html body #t-pedidos .header-pedidos-moderno h2.font-display { font-size: 1.8rem !important; color: var(--favu-green) !important; }
+@media (max-width: 768px) {
+    html body .tab-pane .aba-titulo-card, html body .tab-pane .aba-titulo-card h2.font-display { text-align: center !important; }
+    html body .tab-pane .panel-card > h2.font-display, html body #t-cupons .cupons-cabecalho h2.font-display { text-align: center !important; width: 100%; }
+}
+
+/* Busca padrão (modelo de Cupons): campo arredondado com borda laranja e "Limpar filtros" ao lado */
+html body .tab-pane .search-bar, html body #gastos-busca, html body #search-input-pedidos { border: 2px solid var(--favu-rust) !important; border-radius: 30px !important; padding: 0 16px !important; background: #fff !important; height: 40px !important; min-height: 40px !important; box-sizing: border-box !important; font-family: var(--font-numbers) !important; font-size: 0.9rem !important; margin: 0 !important; }
+html body .tab-pane .btn-clear-filter { height: 40px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 6px; background: #fff !important; color: var(--favu-green) !important; border: 1px solid #ddd !important; border-radius: 10px !important; padding: 0 14px !important; white-space: nowrap !important; font-size: 0.85rem !important; box-sizing: border-box !important; }
+html body #t-prods .search-filter-actions { flex: 0 1 500px; }
+
+/* Filtros sempre numa linha no computador (encolhem com zoom); no celular, um embaixo do outro */
+@media (min-width: 901px) {
+    html body #t-gastos #filter-bar-gastos .filter-group-main .filter-item { width: auto !important; flex: 1 1 0 !important; min-width: 0 !important; }
+    html body #t-gastos #filter-bar-gastos #gastos-filtro-busca-wrap { flex: 2 1 0 !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-additional, html body #t-gastos #filter-bar-gastos .filter-group-additional .filter-item { flex: 0 0 auto !important; width: auto !important; }
+    html body #t-pedidos #filter-bar-pedidos { display: flex !important; flex-wrap: nowrap !important; align-items: flex-end !important; gap: 10px !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-group-main, html body #t-pedidos #filter-bar-pedidos .filter-group-additional { display: contents !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; margin: 0 !important; }
+    html body #t-pedidos #filter-bar-pedidos .filtro-busca-direita { flex: 1.6 1 0 !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item:last-child { flex: 0 0 auto !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item input, html body #t-pedidos #filter-bar-pedidos .filter-item select { width: 100% !important; min-width: 0 !important; box-sizing: border-box; height: 40px; }
+}
+@media (max-width: 900px) {
+    html body #t-gastos #filter-bar-gastos .filter-item, html body #t-pedidos #filter-bar-pedidos .filter-item { width: 100% !important; flex: 1 1 100% !important; max-width: 100% !important; margin: 0 0 10px !important; align-items: stretch !important; text-align: left !important; }
+    html body #t-gastos #filter-bar-gastos .filter-item label, html body #t-pedidos #filter-bar-pedidos .filter-item label { text-align: left !important; display: block; margin-bottom: 4px; }
+    html body #t-gastos #filter-bar-gastos .filter-item input, html body #t-gastos #filter-bar-gastos .filter-item select,
+    html body #t-pedidos #filter-bar-pedidos .filter-item input, html body #t-pedidos #filter-bar-pedidos .filter-item select { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; height: 42px !important; text-align: left !important; }
+    html body #t-gastos #filter-bar-gastos .btn-clear-filter, html body #t-pedidos #filter-bar-pedidos .btn-clear-filter { width: 100% !important; }
+}
+
+/* Barras de total: mesma altura; valores de cada mês cabem (sem "Total anual") */
+@media (min-width: 901px) {
+    html body #t-gastos tfoot.gastos-total-tfoot > tr > td { height: 56px !important; padding-top: 0 !important; padding-bottom: 0 !important; box-sizing: border-box !important; }
+    html body #t-gastos #gastos-painel-resumo tfoot.gastos-total-tfoot > tr > td:not(:first-child) { font-size: 0.7rem !important; letter-spacing: -0.2px; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.15 !important; padding-left: 2px !important; padding-right: 2px !important; }
+    html body #t-gastos #gastos-painel-resumo tfoot .gastos-total-anual-geral small { display: none !important; }
+    html body #t-gastos #gastos-painel-resumo tfoot .gastos-total-anual-geral strong { font-size: 0.72rem !important; white-space: normal !important; }
+}
+html body #t-gastos .gastos-total-anual-geral small { display: none !important; }
+
+/* Datas específicas: informação completa e botões embaixo */
+html body #t-horarios .excecoes-grade { align-items: stretch; }
+html body #t-horarios .excecoes-grade .excecao-card { display: flex !important; flex-direction: column !important; justify-content: space-between; gap: 10px; min-height: 150px; height: auto !important; box-sizing: border-box; padding: 14px; margin: 0 !important; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); cursor: pointer; }
+html body #t-horarios .excecoes-grade .excecao-card-main { display: flex; flex-direction: column; gap: 6px; }
+html body #t-horarios .excecoes-grade .excecao-card-resumo { font-size: 0.85rem; line-height: 1.4; white-space: normal !important; overflow: visible !important; display: block !important; -webkit-line-clamp: unset !important; max-height: none !important; }
+html body #t-horarios .excecoes-grade .excecao-card-actions { display: flex !important; flex-direction: row !important; gap: 8px; justify-content: center !important; padding-top: 10px; border-top: 1px dashed rgba(224,159,65,0.35); }
+
+/* Atendimento: 7 dias lado a lado, nome completo e marcação em forma de chave */
+html body #t-horarios .agenda-dias-grade { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+html body #t-horarios .agenda-dia-caixa { display: flex; flex-direction: column; gap: 12px; min-height: 120px; box-sizing: border-box; padding: 14px 12px; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 8px; font-family: 'Basic Choice', cursive; font-size: 1rem; color: var(--favu-green); text-transform: uppercase; margin: 0 !important; padding: 0 !important; cursor: pointer; flex-direction: row !important; width: 100% !important; position: static !important; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label span { order: 0; margin: 0 !important; padding: 0 !important; position: static !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input[type="checkbox"] { order: 1; position: relative !important; left: auto !important; top: auto !important; transform: none !important; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input[type="checkbox"] { -webkit-appearance: none; appearance: none; width: 38px; height: 22px; border-radius: 22px; background: #ccc; position: relative; cursor: pointer; margin: 0; flex: 0 0 auto; transition: background .2s; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input[type="checkbox"]::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: left .2s; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input[type="checkbox"]:checked { background: #28a745; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input[type="checkbox"]:checked::after { left: 19px; }
+html body #t-horarios .agenda-dia-caixa input[type="text"] { width: 100%; box-sizing: border-box; font-size: 0.85rem; }
+@media (max-width: 1100px) and (min-width: 769px) { html body #t-horarios .agenda-dias-grade { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 768px) { html body #t-horarios .agenda-dias-grade { grid-template-columns: 1fr; } }
+
+/* Temas: 4 por linha no computador, cartões maiores */
+@media (min-width: 1001px) {
+    html body #lista-temas.temas-grid { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: 18px !important; }
+    html body #lista-temas .tema-card { width: auto !important; max-width: none !important; padding: 16px !important; }
+    html body #lista-temas .tema-card-preview { min-height: 170px; }
+    html body #lista-temas .tema-card-nome { font-size: 1.35rem; }
+    html body #lista-temas .tema-card-acoes .btn-action { width: 40px; height: 40px; }
+}
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-13"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-14"></script>
 
 
     <div id="modal-gasto-item" class="modal">

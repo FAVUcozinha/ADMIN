@@ -1,4 +1,4 @@
-const CACHE_NAME = 'favu-app-v154-pacote-13';
+const CACHE_NAME = 'favu-app-v155-pacote-14';
 const urlsToCache = [
   './',
   './index.html',
