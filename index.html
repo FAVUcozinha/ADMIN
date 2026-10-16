@@ -5952,9 +5952,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <!-- 2026-10-15: o tema é um dado de cada página. Escolha a página e abra o
                      tema: o editor mostra os botões, textos, cores e imagens só daquela página. -->
                 <div class="buttons-area layout-topo-botoes"><button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button></div>
-                <div class="prod-tabs layout-subabas">
-                    <button type="button" class="prod-tab-btn active" data-sub-layout="inicio" onclick="window.trocarSubAbaLayout('inicio')"><i class="fas fa-home"></i> Página inicial</button>
-                    <button type="button" class="prod-tab-btn" data-sub-layout="cardapio" onclick="window.trocarSubAbaLayout('cardapio')"><i class="fas fa-utensils"></i> Cardápio</button>
+                <div class="panel-card aba-titulo-card aba-titulo-centro"><h2 class="font-display">Layout</h2></div>
+                <div class="avisos-tabs layout-subabas">
+                    <button type="button" class="avisos-tab-btn active" data-sub-layout="inicio" onclick="window.trocarSubAbaLayout('inicio')">Página inicial</button>
+                    <button type="button" class="avisos-tab-btn" data-sub-layout="cardapio" onclick="window.trocarSubAbaLayout('cardapio')">Cardápio</button>
                 </div>
                 <section class="panel-card secao-aba" id="secao-temas">
                     <div class="secao-aba-cabecalho secao-aba-cabecalho-centro">
@@ -5962,7 +5963,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     </div>
                     <div id="lista-temas" class="temas-grid"></div>
                 </section>
-                <div data-painel-layout="inicio">
+                <!-- O carrossel fica guardado aqui e aparece dentro do tema (bloco Página inicial). -->
+                <div id="casa-carrossel" style="display:none;">
                 <form id="form-cores" class="form-grid panel-card" style="display:none;">
                     <div><label>Fundo Principal</label><input type="color" id="cor-bg" value="#F4E6CB"></div>
                     <div><label>Fundo de Caixas/Menus</label><input type="color" id="cor-card" value="#FFF5EB"></div>
@@ -5993,7 +5995,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div id="galeria-preview" class="carrossel-admin-grid"></div>
                 </section>
                 </div>
-                <div data-painel-layout="cardapio" style="display:none;"></div>
+
             </div>
 
             <div id="t-orcamentos" class="tab-pane" style="position: relative; padding-bottom: 80px; background-color: var(--bg-color);">
@@ -6155,17 +6157,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                     <button class="btn btn-primary gastos-rebuild-new-btn" onclick="window.abrirModalGastosLote()"><i class="fas fa-layer-group"></i> Lançar gastos</button>
                 </div>
 
-                <!-- 2026-10-15: Tabela, Lista, Marcas e Produtos num grupo só, com o mesmo visual.
-                     No celular ficam 2 em cima e 2 embaixo. -->
-                <div class="prod-tabs gastos-subtabs gastos-abas-4">
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')"><i class="fas fa-table"></i> Tabela</button>
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')"><i class="fas fa-list"></i> Lista</button>
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
-                    <button type="button" class="prod-tab-btn gastos-subtab-btn" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Produtos</button>
+                <!-- 2026-10-15: mesmo padrão de Cupons — título da aba e Tabela/Lista como
+                     Ativos/Inativos. Marcas, Itens e Local ficam no cartão acima da tabela. -->
+                <div class="panel-card aba-titulo-card aba-titulo-centro"><h2 class="font-display">Gastos</h2></div>
+                <div class="avisos-tabs gastos-tabs-tl">
+                    <button type="button" class="avisos-tab-btn gastos-subtab-btn active" data-subaba="gastos" onclick="window.trocarSubAbaGastos('gastos')">Tabela</button>
+                    <button type="button" class="avisos-tab-btn gastos-subtab-btn" data-subaba="lancamentos" onclick="window.trocarSubAbaGastos('lancamentos')">Lista</button>
                 </div>
 
                 <div class="panel-card gastos-rebuild-header">
-                    <h2 class="font-display gastos-rebuild-title" id="gastos-titulo-painel">Planilha de Gastos</h2>
+                    <h2 class="font-display gastos-rebuild-title" id="gastos-titulo-painel" style="display:none;">Planilha de Gastos</h2>
+                    <div class="gastos-gerenciar">
+                        <button type="button" class="btn btn-outline" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
+                        <button type="button" class="btn btn-outline" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Itens</button>
+                        <button type="button" class="btn btn-outline" onclick="window.abrirModalLocaisGasto()"><i class="fas fa-store"></i> Local</button>
+                    </div>
 
                     <div id="filter-toggle-btn-gastos" onclick="document.getElementById('filter-bar-gastos').classList.toggle('show')">
                         <span class="gastos-filtro-toggle-label"><i class="fas fa-filter"></i> Filtros</span>
@@ -6190,6 +6196,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             <div class="filter-item" id="gastos-filtro-item-wrap" style="display:none;">
                                 <label>Item</label>
                                 <select id="gastos-filtro-item" onchange="window.renderGastosPlanilha()"><option value="">Todos os itens</option></select>
+                            </div>
+                            <div class="filter-item" id="gastos-filtro-busca-wrap">
+                                <label>Buscar</label>
+                                <input type="text" id="gastos-busca" placeholder="Buscar..." oninput="window.filtrarBuscaGastos()">
                             </div>
                             <div class="filter-item" id="gastos-filtro-periodo-wrap" style="display:none;">
                                 <label>Período</label>
@@ -12848,9 +12858,57 @@ html body #t-tema .secao-aba-cabecalho-centro { justify-content: center !importa
     #modal-editor-tema .tema-itens-grade { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     #modal-editor-tema .tema-previa-topo small { display: none; }
 }
+
+/* 2026-10-15 (13) */
+/* Títulos das abas centralizados (Layout, Gastos) */
+html body .tab-pane .aba-titulo-centro { text-align: center; }
+html body .tab-pane .aba-titulo-centro h2.font-display { margin: 0 auto !important; }
+/* Editor do tema: abas Página inicial | Cardápio e blocos */
+#modal-editor-tema .tema-paginas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 12px; }
+#modal-editor-tema .tema-paginas .avisos-tab-btn { border-radius: 30px; padding: 10px 16px; font-family: 'Basic Choice', cursive; font-size: 0.95rem; text-transform: uppercase; background: #fff; color: var(--favu-green); border: 1px solid rgba(29,40,20,0.15); cursor: pointer; }
+#modal-editor-tema .tema-paginas .avisos-tab-btn.active { background: var(--favu-green); color: #fff; border-color: var(--favu-green); }
+#modal-editor-tema .tema-secao-rotulo { font-family: 'Basic Choice', cursive; color: var(--favu-rust); font-size: 1rem; text-transform: uppercase; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 1px dashed rgba(224,159,65,0.45); }
+#modal-editor-tema .tema-secao-rotulo small { font-family: var(--font-numbers); color: #999; text-transform: none; font-size: 0.75rem; }
+#modal-editor-tema #bloco-carrossel-holder .secao-aba { box-shadow: none !important; border: 1px solid rgba(224,159,65,0.3) !important; padding: 14px !important; }
+#modal-editor-tema #bloco-carrossel-holder .secao-aba-cabecalho { display: none; }
+/* Caixas do tema 50% maiores no computador */
+@media (min-width: 1001px) {
+    html body #modal-editor-tema .tema-editor-corpo { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+    html body #modal-editor-tema .tema-itens-grade { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important; gap: 14px !important; }
+    #modal-editor-tema .tema-item-caixa { padding: 16px !important; }
+    #modal-editor-tema .tema-item-caixa .tema-campo-topo label { font-size: 1.05rem !important; }
+    #modal-editor-tema .tema-item-caixa .tema-campo-ajuda { font-size: 0.88rem !important; }
+    #modal-editor-tema .tema-item-visual { height: 108px !important; }
+    #modal-editor-tema .tema-item-btn { min-height: 42px !important; font-size: 0.9rem !important; }
+    #modal-editor-tema .tema-cor-visual span { font-size: 0.85rem !important; }
+}
+/* Gastos: Marcas, Itens e Local no cartão acima da tabela; filtros do mesmo tamanho */
+html body #t-gastos .gastos-gerenciar { display: flex; gap: 10px; flex-wrap: wrap; width: 100%; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid #f0e6d6; }
+html body #t-gastos .gastos-gerenciar .btn { background: #fff !important; color: var(--favu-green) !important; border: 1px solid #ddd !important; border-radius: 10px !important; padding: 10px 16px !important; font-size: 0.9rem !important; display: inline-flex; align-items: center; gap: 8px; }
+html body #t-gastos .gastos-gerenciar .btn:hover { background: var(--favu-green) !important; color: #fff !important; }
+html body #t-gastos .gastos-tabs-tl { margin-bottom: 15px; }
+@media (min-width: 901px) {
+    html body #t-gastos .gastos-rebuild-header { flex-direction: column !important; align-items: stretch !important; }
+    html body #t-gastos #filter-bar-gastos { margin: 0 !important; justify-content: flex-start !important; width: 100% !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: flex-end !important; gap: 10px !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main .filter-item { width: 200px !important; flex: 0 0 200px !important; flex-direction: column !important; height: auto !important; }
+    html body #t-gastos #filter-bar-gastos #gastos-busca { height: 42px !important; min-height: 0 !important; max-height: 42px !important; flex: none !important; border-radius: 10px !important; padding: 8px 12px !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main .filter-item select, html body #t-gastos #filter-bar-gastos .filter-group-main .filter-item input { width: 100% !important; min-width: 0 !important; box-sizing: border-box; }
+    html body #t-gastos #filter-bar-gastos .filter-group-additional { margin-left: auto !important; }
+}
+@media (max-width: 600px) {
+    html body #t-gastos .gastos-gerenciar { flex-direction: column; }
+    html body #t-gastos .gastos-gerenciar .btn { width: 100%; justify-content: center; }
+}
+/* Tabela de gastos: nome do item só leitura */
+html body #t-gastos .gastos-item-nome-inline[readonly] { border: none !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; cursor: default !important; pointer-events: none; }
+/* Janelas Marcas / Itens / Local: busca + limpar filtros na mesma linha */
+.gasto-busca-linha { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.gasto-busca-linha .search-bar { flex: 1; min-width: 0; }
+.gasto-busca-linha .btn-clear-filter { white-space: nowrap; background: #fff !important; color: var(--favu-green) !important; border: 1px solid #ddd !important; border-radius: 10px !important; padding: 9px 12px !important; font-size: 0.85rem !important; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-11"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-12"></script>
 
 
     <div id="modal-gasto-item" class="modal">

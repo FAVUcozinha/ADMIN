@@ -12660,7 +12660,7 @@ window.abrirModalMarcasGasto = function() {
                 <div class="modal-header"><h3 style="color:var(--favu-rust);">Marcas</h3><button class="close-modal" onclick="window.closeModal('modal-marcas-gasto')">&times;</button></div>
                 <div class="modal-body">
                     <div class="gasto-novo-cadastro"><input type="text" id="nova-marca-gasto" placeholder="Nova marca" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.cadastrarMarcaGastoModal();}"><button type="button" class="btn btn-primary" onclick="window.cadastrarMarcaGastoModal()"><i class="fas fa-plus"></i> Cadastrar</button></div>
-                    <input type="text" id="busca-marcas-gasto" class="search-bar" placeholder="Buscar marca..." oninput="window.renderListaMarcasGasto()" style="margin:0;">
+                    <div class="gasto-busca-linha"><input type="text" id="busca-marcas-gasto" class="search-bar" placeholder="Buscar marca..." oninput="window.renderListaMarcasGasto()" style="margin:0;"><button type="button" class="btn btn-outline btn-clear-filter" onclick="document.getElementById('busca-marcas-gasto').value=''; window.renderListaMarcasGasto()"><i class="fas fa-eraser"></i> Limpar filtros</button></div>
                     <div id="lista-marcas-gasto" class="marcas-gasto-lista"></div>
                 </div>
             </div>`;
@@ -13130,6 +13130,22 @@ async function mostrarPreviaImgTema(campo) {
     mostrar(ref ? await resolverImagemTemaAdmin(ref) : (def && def[9] ? URL_IMG_PADRAO(def[9]) : ''));
 }
 
+// Blocos do editor: cada um reúne botões/textos, imagens e cores da sua parte do site.
+const BLOCOS_TEMA = {
+    inicio: [
+        { id: 'inicio', nome: 'Página inicial', conteudo: 'cont-inicio-pagina', areas: ['geral', 'inicio'], carrossel: true, abrir: '' },
+        { id: 'menu', nome: 'Menu lateral', conteudo: 'cont-inicio-menu', areas: ['menu'], abrir: 'menu' },
+        { id: 'quemsomos', nome: 'Quem somos', conteudo: 'cont-inicio-quemsomos', areas: ['quemsomos'], abrir: 'quemsomos' },
+        { id: 'agenda', nome: 'Agendamento', agenda: true }
+    ],
+    cardapio: [
+        { id: 'cardapio', nome: 'Cardápio', conteudo: '', areas: ['geral', 'cardapio'], abrir: '' },
+        { id: 'menu', nome: 'Menu lateral', conteudo: 'cont-cardapio-menu', areas: ['menu'], abrir: 'menu' },
+        { id: 'resumo', nome: 'Janela do resumo', conteudo: 'cont-cardapio-resumo', areas: ['resumo'], abrir: 'resumo' },
+        { id: 'info', nome: 'Informações do pedido', conteudo: 'cont-cardapio-info', areas: ['info'], abrir: 'info' },
+        { id: 'agenda', nome: 'Agendamento', agenda: true }
+    ]
+};
 window.abrirEditorTema = function(id = '') {
     const t = temasLista.find(x => x.id === id) || { nome: '' };
     let modal = document.getElementById('modal-editor-tema');
@@ -13139,85 +13155,107 @@ window.abrirEditorTema = function(id = '') {
         modal.className = 'modal';
         document.body.appendChild(modal);
     }
+    devolverCarrosselAoLayout();
     const pagina = window.__paginaLayout === 'cardapio' ? 'cardapio' : 'inicio';
-    const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {}, pagina };
-    // Botões e textos desta página, dentro do tema (cópia para editar).
-    window.__siteEd = window.__siteEd || {};
-    window.__siteEd[pagina] = JSON.parse(JSON.stringify(conteudoEfetivoTema(id ? t : { id: '' }, pagina)));
-    const AREAS_PAGINA = { inicio: ['geral', 'inicio', 'menu', 'quemsomos'], cardapio: ['geral', 'cardapio', 'menu', 'resumo', 'info'] }[pagina];
-    const areasEditor = AREAS_TEMA.filter(([a]) => AREAS_PAGINA.includes(a));
-    const [agIniData, agIniHora] = String(t.agendaInicio || '').split('T');
-    const [agFimData, agFimHora] = String(t.agendaFim || '').split('T');
+    const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {}, pagina, bloco: BLOCOS_TEMA[pagina][0].id };
     CHAVES_IMG_TEMA.forEach(k => { ed.imgs[k] = t[k] || ''; });
     CHAVES_COR_TEMA.forEach(k => { ed.cores[k] = t[k] || basePadraoCampo(ed.id, k); });
-    // Áreas (abas) → grupos → elementos. Cada caixa, ao clicar, pisca o elemento na prévia ao vivo.
-    const htmlArea = (area) => {
+    // Botões e textos das duas páginas (cópias para editar).
+    window.__siteEd = window.__siteEd || {};
+    ['inicio', 'cardapio'].forEach(pg => { window.__siteEd[pg] = JSON.parse(JSON.stringify(conteudoEfetivoTema(id ? t : { id: '' }, pg))); });
+    const [agIniData, agIniHora] = String(t.agendaInicio || '').split('T');
+    const [agFimData, agFimHora] = String(t.agendaFim || '').split('T');
+    const htmlGrupos = (area) => {
         const grupos = [];
         const add = (g, html) => { let x = grupos.find(y => y[0] === g); if (!x) { x = [g, []]; grupos.push(x); } x[1].push(html); };
         CAMPOS_IMG_TEMA.filter(c => c[3] === area).forEach(c => add(c[6], htmlCampoImgTema(c)));
         ELEMENTOS_TEMA.filter(e => e[3] === area).forEach(e => add(e[5], htmlCampoCorTema(e[0])));
         return grupos.map(([g, itens]) => `<div class="tema-secao"><h4 class="font-display tema-secao-titulo">${g}</h4><div class="tema-itens-grade">${itens.join('')}</div></div>`).join('');
     };
+    const agendaHtml = `<div class="tema-secao">
+            <h4 class="font-display tema-secao-titulo">Agendamento (opcional)</h4>
+            <small class="tema-campo-ajuda tema-secao-ajuda">Com início e/ou fim, o tema entra e sai do ar sozinho nesse período. Fora dele, os sites voltam ao tema aplicado.</small>
+            <div class="cat-schedule-box tema-agenda-caixa"><div class="form-grid">
+                <div><label>Data início</label><input type="date" id="tema-agenda-ini-data" value="${escapeHtmlPedido(agIniData || '')}"></div>
+                <div><label>Hora início</label><input type="time" id="tema-agenda-ini-hora" value="${escapeHtmlPedido(agIniHora || '')}"></div>
+                <div><label>Data fim</label><input type="date" id="tema-agenda-fim-data" value="${escapeHtmlPedido(agFimData || '')}"></div>
+                <div><label>Hora fim</label><input type="time" id="tema-agenda-fim-hora" value="${escapeHtmlPedido(agFimHora || '')}"></div>
+            </div></div></div>`;
+    const painelBloco = (pg, b) => {
+        if (b.agenda) return pg === 'inicio' ? `<div class="tema-bloco" data-bloco="agenda" style="display:none;">${agendaHtml}</div>` : '';
+        return `<div class="tema-bloco" data-bloco="${pg}:${b.id}" style="display:none;">
+            ${b.conteudo ? `<div class="tema-secao-rotulo">Botões e textos</div><div id="${b.conteudo}" class="tema-conteudo-pagina"></div>` : ''}
+            ${b.carrossel ? `<div class="tema-secao-rotulo">Carrossel de fotos <small>(vale para todos os temas)</small></div><div id="bloco-carrossel-holder"></div>` : ''}
+            <div class="tema-secao-rotulo">Cores e imagens</div>
+            ${b.areas.map(htmlGrupos).join('')}
+        </div>`;
+    };
     modal.innerHTML = `
         <div class="modal-content tema-editor-content">
-            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'} · ${pagina === 'cardapio' ? 'Cardápio' : 'Página inicial'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
+            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
             <div class="modal-body tema-editor-corpo">
                 <div class="tema-editor-campos">
                     <div style="margin-bottom:12px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026" ${id === 'padrao' ? 'readonly' : ''}></div>
-                    <div class="prod-tabs tema-areas"><button type="button" class="prod-tab-btn active" data-area-tema="conteudo" onclick="window.trocarAreaTema('conteudo')">Botões e textos</button>${areasEditor.map(([a, n]) => `<button type="button" class="prod-tab-btn" data-area-tema="${a}" onclick="window.trocarAreaTema('${a}')">${n}</button>`).join('')}<button type="button" class="prod-tab-btn" data-area-tema="agenda" onclick="window.trocarAreaTema('agenda')">Agendamento</button></div>
-                    <div class="tema-area" data-painel-area="conteudo"><small class="tema-campo-ajuda tema-secao-ajuda">Botões, links e textos ${pagina === 'cardapio' ? 'do cardápio' : 'da página inicial'} neste tema. Sem mudanças, seguem o tema Padrão.</small><div id="editor-site-${pagina}" class="tema-conteudo-pagina"></div></div>
-                    ${areasEditor.map(([a, , ajuda]) => `<div class="tema-area" data-painel-area="${a}" style="display:none;">${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda} Cores com "padrão" mantêm a cor do tema Padrão.</small>` : `<small class="tema-campo-ajuda tema-secao-ajuda">Cores com "padrão" mantêm a cor do tema Padrão.</small>`}${htmlArea(a)}</div>`).join('')}
-                    <div class="tema-area" data-painel-area="agenda" style="display:none;">
-                        <div class="tema-secao">
-                            <h4 class="font-display tema-secao-titulo">Agendamento (opcional)</h4>
-                            <small class="tema-campo-ajuda tema-secao-ajuda">Com início e/ou fim, o tema entra e sai do ar sozinho nesse período. Fora dele, os sites voltam ao tema aplicado.</small>
-                            <div class="cat-schedule-box tema-agenda-caixa">
-                                <div class="form-grid">
-                                    <div><label>Data início</label><input type="date" id="tema-agenda-ini-data" value="${escapeHtmlPedido(agIniData || '')}"></div>
-                                    <div><label>Hora início</label><input type="time" id="tema-agenda-ini-hora" value="${escapeHtmlPedido(agIniHora || '')}"></div>
-                                    <div><label>Data fim</label><input type="date" id="tema-agenda-fim-data" value="${escapeHtmlPedido(agFimData || '')}"></div>
-                                    <div><label>Hora fim</label><input type="time" id="tema-agenda-fim-hora" value="${escapeHtmlPedido(agFimHora || '')}"></div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="avisos-tabs tema-paginas">
+                        <button type="button" class="avisos-tab-btn" data-pagina-tema="inicio" onclick="window.trocarPaginaTema('inicio')">Página inicial</button>
+                        <button type="button" class="avisos-tab-btn" data-pagina-tema="cardapio" onclick="window.trocarPaginaTema('cardapio')">Cardápio</button>
                     </div>
+                    ${['inicio', 'cardapio'].map(pg => `<div class="prod-tabs tema-areas" data-blocos-de="${pg}" style="display:none;">${BLOCOS_TEMA[pg].map(b => `<button type="button" class="prod-tab-btn" data-bloco-btn="${pg}:${b.id}" onclick="window.trocarBlocoTema('${b.id}')">${b.nome}</button>`).join('')}</div>`).join('')}
+                    <small class="tema-campo-ajuda tema-secao-ajuda">Cores com "padrão" seguem o tema Padrão. Clique em qualquer item para ver onde ele fica na prévia.</small>
+                    ${['inicio', 'cardapio'].map(pg => BLOCOS_TEMA[pg].map(b => painelBloco(pg, b)).join('')).join('')}
                     <div class="tema-editor-acoes">
                         <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
                         <button type="button" class="btn btn-primary" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
                     </div>
                 </div>
                 <div class="tema-editor-previa">
-                    <div class="tema-previa-topo">
-                        <div class="prod-tabs previa-abas">
-                            <button type="button" class="prod-tab-btn active" data-viva-pagina="index.html" onclick="window.trocarPaginaAoVivo('index.html')">Página inicial</button>
-                            <button type="button" class="prod-tab-btn" data-viva-pagina="cardapio.html" onclick="window.trocarPaginaAoVivo('cardapio.html')">Cardápio</button>
-                        </div>
-                        <small>Prévia ao vivo · clique num item para ver onde ele fica</small>
-                    </div>
+                    <div class="tema-previa-topo"><small>Prévia ao vivo · clique num item para ver onde ele fica</small></div>
                     <iframe id="tema-previa-viva" title="Prévia ao vivo"></iframe>
                 </div>
             </div>
         </div>`;
     window.openModal('modal-editor-tema');
     CHAVES_IMG_TEMA.forEach(mostrarPreviaImgTema);
-    renderEditorSite(pagina);
-    // Retrato do conteúdo como abriu (no mesmo formato do editor), para saber se mudou.
-    lerCamposFixosSite(pagina);
-    ed.conteudoInicial = JSON.stringify(window.__siteEd[pagina]);
-    window.trocarPaginaAoVivo(pagina === 'cardapio' ? 'cardapio.html' : 'index.html');
+    renderEditorSite('inicio');
+    renderEditorSite('cardapio');
+    // Retrato do conteúdo como abriu (mesmo formato do editor), para saber se mudou.
+    ed.conteudoInicial = {};
+    ['inicio', 'cardapio'].forEach(pg => { lerCamposFixosSite(pg); ed.conteudoInicial[pg] = JSON.stringify(window.__siteEd[pg]); });
+    // Carrossel (global) dentro do bloco Página inicial.
+    const holder = document.getElementById('bloco-carrossel-holder');
+    const car = document.getElementById('secao-carrossel');
+    if (holder && car) holder.appendChild(car);
+    window.trocarPaginaTema(pagina);
+};
+function devolverCarrosselAoLayout() {
+    const car = document.getElementById('secao-carrossel');
+    const casa = document.getElementById('casa-carrossel');
+    if (car && casa && car.parentElement !== casa) casa.appendChild(car);
+}
+(function() {
+    const fechar = window.closeModal;
+    window.closeModal = function(id, ...a) { if (id === 'modal-editor-tema') devolverCarrosselAoLayout(); return fechar.call(this, id, ...a); };
+})();
+window.trocarPaginaTema = function(pg) {
+    const ed = window.__temaEdicao; if (!ed) return;
+    ed.pagina = pg;
+    document.querySelectorAll('#modal-editor-tema [data-pagina-tema]').forEach(b => b.classList.toggle('active', b.dataset.paginaTema === pg));
+    document.querySelectorAll('#modal-editor-tema [data-blocos-de]').forEach(d => { d.style.display = d.dataset.blocosDe === pg ? '' : 'none'; });
+    window.trocarBlocoTema(BLOCOS_TEMA[pg][0].id);
+};
+window.trocarBlocoTema = function(bloco) {
+    const ed = window.__temaEdicao; if (!ed) return;
+    ed.bloco = bloco;
+    const chave = bloco === 'agenda' ? 'agenda' : `${ed.pagina}:${bloco}`;
+    document.querySelectorAll('#modal-editor-tema [data-bloco-btn]').forEach(b => b.classList.toggle('active', b.dataset.blocoBtn === `${ed.pagina}:${bloco}`));
+    document.querySelectorAll('#modal-editor-tema [data-bloco]').forEach(p => { p.style.display = p.dataset.bloco === chave ? '' : 'none'; });
+    const def = BLOCOS_TEMA[ed.pagina].find(b => b.id === bloco) || {};
+    window.trocarPaginaAoVivo(ed.pagina === 'cardapio' ? 'cardapio.html' : 'index.html', () => {
+        try { iframeAoVivo().contentWindow.postMessage({ tipo: 'favu-destacar', seletor: '', abrir: def.abrir || '' }, location.origin); } catch (e) {}
+    });
 };
 
 // ---------- Prévia ao vivo dentro do editor ----------
-window.trocarAreaTema = function(area) {
-    document.querySelectorAll('#modal-editor-tema [data-area-tema]').forEach(b => b.classList.toggle('active', b.dataset.areaTema === area));
-    document.querySelectorAll('#modal-editor-tema [data-painel-area]').forEach(p => { p.style.display = p.dataset.painelArea === area ? '' : 'none'; });
-    // Abre na prévia a parte que está sendo editada (menu, Quem somos, janelas).
-    const pg = window.__temaEdicao?.pagina === 'cardapio' ? 'cardapio.html' : 'index.html';
-    const abrir = { menu: 'menu', quemsomos: 'quemsomos', resumo: 'resumo', info: 'info' }[area] || '';
-    window.trocarPaginaAoVivo(pg, () => {
-        try { iframeAoVivo().contentWindow.postMessage({ tipo: 'favu-destacar', seletor: '', abrir }, location.origin); } catch (e) {}
-    });
-};
 function iframeAoVivo() { return document.getElementById('tema-previa-viva'); }
 window.trocarPaginaAoVivo = function(pagina, depois) {
     const f = iframeAoVivo();
@@ -13241,7 +13279,7 @@ window.enviarTemaAoVivo = function() {
         else dados[k] = ed.imgs[k] || (ed.id !== 'padrao' ? (getTemaPadrao()[k] || '') : '');
     });
     // Botões e textos da página que está sendo editada.
-    try { if (ed.pagina && window.__siteEd?.[ed.pagina]) { lerCamposFixosSite(ed.pagina); dados[chaveConteudo(ed.pagina)] = window.__siteEd[ed.pagina]; } } catch (e) {}
+    try { ['inicio', 'cardapio'].forEach(pg => { if (window.__siteEd?.[pg]) { lerCamposFixosSite(pg); dados[chaveConteudo(pg)] = window.__siteEd[pg]; } }); } catch (e) {}
     try { f.contentWindow.postMessage({ tipo: 'favu-tema-ao-vivo', dados }, location.origin); } catch (e) {}
 };
 // Mudanças nos botões e textos também vão para a prévia (com um pequeno intervalo).
@@ -13382,11 +13420,14 @@ window.salvarTema = async function() {
         // Botões e textos da página editada (iguais aos do Padrão = vazio, segue o Padrão).
         dados.conteudoInicio = anterior.conteudoInicio || '';
         dados.conteudoCardapio = anterior.conteudoCardapio || '';
-        lerCamposFixosSite(ed.pagina);
-        const conteudoEditado = JSON.parse(JSON.stringify(window.__siteEd[ed.pagina]));
-        ['botoesCapa', 'menuLateral', 'redes'].forEach(k => { if (Array.isArray(conteudoEditado[k])) conteudoEditado[k].forEach((it, i) => { it.ordem = i; }); });
-        const mudou = JSON.stringify(window.__siteEd[ed.pagina]) !== ed.conteudoInicial;
-        if (mudou) dados[chaveConteudo(ed.pagina)] = conteudoEditado;
+        ['inicio', 'cardapio'].forEach(pg => {
+            lerCamposFixosSite(pg);
+            const atual = JSON.stringify(window.__siteEd[pg]);
+            if (atual === (ed.conteudoInicial || {})[pg]) return; // não mexeu: continua como estava
+            const conteudoEditado = JSON.parse(atual);
+            ['botoesCapa', 'menuLateral', 'redes'].forEach(k => { if (Array.isArray(conteudoEditado[k])) conteudoEditado[k].forEach((it, i) => { it.ordem = i; }); });
+            dados[chaveConteudo(pg)] = conteudoEditado;
+        });
         // Cor igual ao padrão é gravada vazia: assim continua seguindo o Padrão.
         CHAVES_COR_TEMA.forEach(k => {
             const v = ed.cores[k];
@@ -13671,10 +13712,10 @@ window.abrirModalProdutosGasto = function() {
         modal.className = 'modal';
         modal.innerHTML = `
             <div class="modal-content" style="max-width:520px; border:2px solid var(--favu-rust);">
-                <div class="modal-header"><h3 style="color:var(--favu-rust);">Produtos</h3><button class="close-modal" onclick="window.closeModal('modal-produtos-gasto')">&times;</button></div>
+                <div class="modal-header"><h3 style="color:var(--favu-rust);">Itens</h3><button class="close-modal" onclick="window.closeModal('modal-produtos-gasto')">&times;</button></div>
                 <div class="modal-body">
-                    <div class="gasto-novo-cadastro"><input type="text" id="novo-produto-gasto" placeholder="Novo produto" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.cadastrarProdutoGastoModal();}"><button type="button" class="btn btn-primary" onclick="window.cadastrarProdutoGastoModal()"><i class="fas fa-plus"></i> Cadastrar</button></div>
-                    <input type="text" id="busca-produtos-gasto" class="search-bar" placeholder="Buscar produto..." oninput="window.renderListaProdutosGasto()" style="margin:0;">
+                    <div class="gasto-novo-cadastro"><input type="text" id="novo-produto-gasto" placeholder="Novo item" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.cadastrarProdutoGastoModal();}"><button type="button" class="btn btn-primary" onclick="window.cadastrarProdutoGastoModal()"><i class="fas fa-plus"></i> Cadastrar</button></div>
+                    <div class="gasto-busca-linha"><input type="text" id="busca-produtos-gasto" class="search-bar" placeholder="Buscar item..." oninput="window.renderListaProdutosGasto()" style="margin:0;"><button type="button" class="btn btn-outline btn-clear-filter" onclick="document.getElementById('busca-produtos-gasto').value=''; window.renderListaProdutosGasto()"><i class="fas fa-eraser"></i> Limpar filtros</button></div>
                     <div id="lista-produtos-gasto" class="marcas-gasto-lista"></div>
                 </div>
             </div>`;
@@ -14259,20 +14300,33 @@ function rodapeSalvarSite(site) {
         <button type="button" class="btn btn-primary" onclick="window.salvarEditorSite('${site}')"><i class="fas fa-save"></i> Salvar ${site === 'inicio' ? 'página inicial' : 'cardápio'}</button>
     </div>`;
 }
+// 2026-10-15: as seções de botões e textos são desenhadas em blocos separados
+// do editor do tema (Página inicial, Menu lateral, Quem somos, Resumo, Informações).
 function renderEditorSite(site) {
-    const box = document.getElementById(site === 'inicio' ? 'editor-site-inicio' : 'editor-site-cardapio');
     const d = window.__siteEd[site];
-    if (!box || !d) return;
+    if (!d) return;
+    const por = id => document.getElementById(id);
     if (site === 'inicio') {
         const qs = d.quemSomos || {};
         const rd = d.rodape || {};
         const bAcao = qs.botaoAcao || 'link';
-        box.innerHTML = `
+        const pagina = por('cont-inicio-pagina'), menu = por('cont-inicio-menu'), quem = por('cont-inicio-quemsomos');
+        if (pagina) pagina.innerHTML = `
             ${blocoListaSite('inicio', 'botoesCapa', 'Botões da capa', 'Os cartões grandes da página inicial.', { legenda: true, icone: true })}
-            ${blocoListaSite('inicio', 'menuLateral', 'Menu lateral', 'Links do menu que abre no botão ☰ da página inicial.', {})}
-            ${blocoListaSite('inicio', 'redes', 'Redes sociais do menu', 'Links que ficam no fim do menu lateral.', { icone: true })}
             <section class="panel-card secao-aba">
-                <div class="secao-aba-cabecalho"><h2 class="font-display">Quem somos</h2></div>
+                <div class="secao-aba-cabecalho"><h2 class="font-display">Rodapé — textos</h2></div>
+                <div class="form-grid">
+                    <div><label>Assinatura (computador)</label><input type="text" id="rodape-assinatura" value="${escapeHtmlPedido(rd.assinatura || '')}"></div>
+                    <div><label>Direitos reservados</label><input type="text" id="rodape-copyright" value="${escapeHtmlPedido(rd.copyright || '')}"></div>
+                </div>
+            </section>`;
+        if (menu) menu.innerHTML = `
+            ${blocoListaSite('inicio', 'menuLateral', 'Links do menu', 'Links do menu ☰ da página inicial.', {})}
+            ${blocoListaSite('inicio', 'redes', 'Redes sociais', 'Links que ficam no fim do menu lateral.', { icone: true })}`;
+        if (quem) {
+            quem.innerHTML = `
+            <section class="panel-card secao-aba">
+                <div class="secao-aba-cabecalho"><h2 class="font-display">Textos</h2></div>
                 <div class="cat-rich-wrapper"><label>Texto</label>${barraRicaSite('qs')}<div id="qs-obs-editor" class="cat-rich-editor site-rich" contenteditable="true" onfocus="window.focusCatEditor('qs')"></div><textarea id="qs-obs" style="display:none;"></textarea></div>
                 <div class="cat-rich-wrapper"><label>Frase em destaque</label>${barraRicaSite('qsd')}<div id="qsd-obs-editor" class="cat-rich-editor site-rich" contenteditable="true" onfocus="window.focusCatEditor('qsd')"></div><textarea id="qsd-obs" style="display:none;"></textarea></div>
                 <div class="form-grid site-qs-botao">
@@ -14281,35 +14335,20 @@ function renderEditorSite(site) {
                     <div><label>Link ou número</label><input type="text" id="qs-botao-link" value="${escapeHtmlPedido(qs.botaoLink || '')}"></div>
                     <div><label>Mostrar o botão</label><select id="qs-botao-visivel"><option value="1" ${qs.botaoVisivel !== false ? 'selected' : ''}>Sim</option><option value="0" ${qs.botaoVisivel === false ? 'selected' : ''}>Não</option></select></div>
                 </div>
-            </section>
-            <section class="panel-card secao-aba">
-                <div class="secao-aba-cabecalho"><h2 class="font-display">Rodapé</h2></div>
-                <div class="form-grid">
-                    <div><label>Assinatura (computador)</label><input type="text" id="rodape-assinatura" value="${escapeHtmlPedido(rd.assinatura || '')}"></div>
-                    <div><label>Direitos reservados</label><input type="text" id="rodape-copyright" value="${escapeHtmlPedido(rd.copyright || '')}"></div>
-                </div>
-            </section>
-            ${rodapeSalvarSite('inicio')}`;
-        window.setCatRichText('qs', qs.texto || '');
-        window.setCatRichText('qsd', qs.destaque || '');
+            </section>`;
+            window.setCatRichText('qs', qs.texto || '');
+            window.setCatRichText('qsd', qs.destaque || '');
+        }
     } else {
         const t = d.textos || {};
         const campoTexto = (k, label) => `<div><label>${label}</label><input type="text" id="txt-cardapio-${k}" value="${escapeHtmlPedido(t[k] || '')}"></div>`;
-        box.innerHTML = `
-            ${blocoListaSite('cardapio', 'menuLateral', 'Menu lateral', 'Links do menu que abre no botão ☰ do cardápio.', {})}
-            ${blocoListaSite('cardapio', 'redes', 'Redes sociais do menu', 'Links que ficam no fim do menu lateral do cardápio.', { icone: true })}
-            <section class="panel-card secao-aba">
-                <div class="secao-aba-cabecalho"><h2 class="font-display">Textos do cardápio</h2></div>
-                <div class="form-grid">
-                    ${campoTexto('tituloResumo', 'Título do resumo')}
-                    ${campoTexto('botaoFazerPedido', 'Botão "Fazer pedido"')}
-                    ${campoTexto('tituloInfo', 'Título de "Informações do pedido"')}
-                    ${campoTexto('botaoConfirmar', 'Botão "Confirmar pedido"')}
-                </div>
-                <div style="margin-top:12px;"><label>Saudação da mensagem do WhatsApp</label><textarea id="txt-cardapio-saudacaoWhatsapp" rows="2">${escapeHtmlPedido(t.saudacaoWhatsapp || '')}</textarea></div>
-                <small class="campo-ajuda" style="margin-top:6px;">Os textos do "Quem somos" e do rodapé são os mesmos da página inicial.</small>
-            </section>
-            ${rodapeSalvarSite('cardapio')}`;
+        const menu = por('cont-cardapio-menu'), resumo = por('cont-cardapio-resumo'), info = por('cont-cardapio-info');
+        if (menu) menu.innerHTML = `
+            ${blocoListaSite('cardapio', 'menuLateral', 'Links do menu', 'Links do menu ☰ do cardápio.', {})}
+            ${blocoListaSite('cardapio', 'redes', 'Redes sociais', 'Links que ficam no fim do menu lateral do cardápio.', { icone: true })}`;
+        if (resumo) resumo.innerHTML = `<section class="panel-card secao-aba"><div class="secao-aba-cabecalho"><h2 class="font-display">Textos</h2></div><div class="form-grid">${campoTexto('tituloResumo', 'Título da janela')}${campoTexto('botaoFazerPedido', 'Botão "Fazer pedido"')}</div></section>`;
+        if (info) info.innerHTML = `<section class="panel-card secao-aba"><div class="secao-aba-cabecalho"><h2 class="font-display">Textos</h2></div><div class="form-grid">${campoTexto('tituloInfo', 'Título da janela')}${campoTexto('botaoConfirmar', 'Botão "Confirmar pedido"')}</div>
+            <div style="margin-top:12px;"><label>Saudação da mensagem do WhatsApp</label><textarea id="txt-cardapio-saudacaoWhatsapp" rows="2">${escapeHtmlPedido(t.saudacaoWhatsapp || '')}</textarea></div></section>`;
     }
 }
 window.renderEditorSite = renderEditorSite;
@@ -14382,3 +14421,135 @@ window.abrirPreviaSite = function(site) {
     if (site === 'cardapio') setTimeout(() => window.trocarPreviaTema('pagina', 'cardapio.html'), 50);
 };
 setTimeout(() => { if (document.getElementById('editor-site-inicio')) carregarEditorSite(); }, 1800);
+
+// ---------- GASTOS: janela "Local" (igual a Marcas e Itens) — 2026-10-15 ----------
+function listaLocaisGastoComUso() {
+    const mapa = new Map();
+    const norm = v => window.normalizarLocalGasto(v);
+    (window.allGastosLocais || []).forEach(l => {
+        const nome = String(l.nome || l.local || l.localCompra || '').trim();
+        if (!nome) return;
+        const k = norm(nome);
+        if (!mapa.has(k)) mapa.set(k, { nome, docs: [], usos: 0 });
+        mapa.get(k).docs.push(l.id);
+    });
+    (allGastosLancamentos || []).forEach(l => {
+        const nome = String(l.localCompra || l.local || '').trim();
+        if (!nome) return;
+        const k = norm(nome);
+        if (!mapa.has(k)) mapa.set(k, { nome, docs: [], usos: 0 });
+        mapa.get(k).usos++;
+    });
+    const ocultos = window.getGastosLocaisOcultos ? window.getGastosLocaisOcultos() : new Set();
+    return [...mapa.values()].filter(l => !ocultos.has(norm(l.nome)) || l.usos > 0).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+window.abrirModalLocaisGasto = function() {
+    let modal = document.getElementById('modal-locais-gasto');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modal-locais-gasto';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:520px; border:2px solid var(--favu-rust);">
+                <div class="modal-header"><h3 style="color:var(--favu-rust);">Local</h3><button class="close-modal" onclick="window.closeModal('modal-locais-gasto')">&times;</button></div>
+                <div class="modal-body">
+                    <div class="gasto-novo-cadastro"><input type="text" id="novo-local-gasto" placeholder="Novo local" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.cadastrarLocalGastoModal();}"><button type="button" class="btn btn-primary" onclick="window.cadastrarLocalGastoModal()"><i class="fas fa-plus"></i> Cadastrar</button></div>
+                    <div class="gasto-busca-linha"><input type="text" id="busca-locais-gasto" class="search-bar" placeholder="Buscar local..." oninput="window.renderListaLocaisGasto()" style="margin:0;"><button type="button" class="btn btn-outline btn-clear-filter" onclick="document.getElementById('busca-locais-gasto').value=''; window.renderListaLocaisGasto()"><i class="fas fa-eraser"></i> Limpar filtros</button></div>
+                    <div id="lista-locais-gasto" class="marcas-gasto-lista"></div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+    }
+    const busca = document.getElementById('busca-locais-gasto');
+    if (busca) busca.value = '';
+    window.renderListaLocaisGasto();
+    window.openModal('modal-locais-gasto');
+};
+window.renderListaLocaisGasto = function() {
+    const box = document.getElementById('lista-locais-gasto');
+    if (!box) return;
+    const termo = window.normalizarLocalGasto(document.getElementById('busca-locais-gasto')?.value || '');
+    const locais = listaLocaisGastoComUso().filter(l => !termo || window.normalizarLocalGasto(l.nome).includes(termo));
+    window.__locaisGastoLista = locais;
+    box.innerHTML = locais.length ? locais.map((l, i) => `
+        <div class="marca-gasto-row">
+            <div><input type="text" value="${escapeHTMLGasto(l.nome)}" class="marca-gasto-nome-input" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.renomearLocalGasto(${i}, this.value);}"><small>${l.usos} lançamento(s)</small></div>
+            <button type="button" class="btn-action edit" title="Salvar novo nome" onclick="window.renomearLocalGasto(${i}, this.closest('.marca-gasto-row').querySelector('input').value)"><i class="fas fa-check"></i></button>
+            <button type="button" class="btn-action del" title="Excluir" onclick="window.excluirLocalGastoLista(${i})"><i class="fas fa-trash"></i></button>
+        </div>`).join('') : '<small style="color:#999;">Nenhum local encontrado.</small>';
+};
+window.cadastrarLocalGastoModal = async function() {
+    const input = document.getElementById('novo-local-gasto');
+    const nome = String(input?.value || '').trim();
+    if (!nome) return window.showToast('Digite o nome do local.', true);
+    if (listaLocaisGastoComUso().some(l => window.normalizarLocalGasto(l.nome) === window.normalizarLocalGasto(nome))) return window.showToast('Esse local já existe.', true);
+    await window.garantirLocalGasto(nome);
+    if (input) input.value = '';
+    window.showToast('Local cadastrado!');
+    setTimeout(() => window.renderListaLocaisGasto(), 300);
+};
+window.renomearLocalGasto = async function(idx, novoBruto) {
+    const local = (window.__locaisGastoLista || [])[idx];
+    const novo = String(novoBruto || '').trim();
+    if (!local || !novo) return window.showToast('Informe o novo nome do local.', true);
+    if (novo === local.nome) return window.showToast('O nome não mudou.');
+    const kAntiga = window.normalizarLocalGasto(local.nome), kNova = window.normalizarLocalGasto(novo);
+    const existente = listaLocaisGastoComUso().find(l => window.normalizarLocalGasto(l.nome) === kNova && kNova !== kAntiga);
+    const executar = async () => {
+        window.mostrarLoading?.(true);
+        try {
+            const ops = [];
+            local.docs.forEach(id => ops.push(existente ? deleteDoc(doc(db, 'gastos_locais', id)) : updateDoc(doc(db, 'gastos_locais', id), { nome: novo })));
+            if (!local.docs.length && !existente) ops.push(addDoc(collection(db, 'gastos_locais'), { nome: novo, createdAt: Date.now() }));
+            allGastosLancamentos.filter(l => window.normalizarLocalGasto(l.localCompra || l.local || '') === kAntiga)
+                .forEach(l => ops.push(updateDoc(doc(db, 'gastos_lancamentos', l.id), { localCompra: existente ? existente.nome : novo, updatedAt: Date.now() })));
+            await Promise.all(ops);
+            window.showToast(existente ? 'Locais juntados!' : 'Local atualizado!');
+            setTimeout(() => window.renderListaLocaisGasto(), 400);
+        } catch (e) { console.error(e); window.showToast('Erro ao renomear local.', true); }
+        window.mostrarLoading?.(false);
+    };
+    if (existente) customConfirm(`Já existe o local "${existente.nome}". Juntar "${local.nome}" com ele?`, executar);
+    else executar();
+};
+window.excluirLocalGastoLista = function(idx) {
+    const local = (window.__locaisGastoLista || [])[idx];
+    if (!local) return;
+    if (local.usos > 0) return customAlert(`"${local.nome}" tem ${local.usos} lançamento(s). Para excluir, renomeie para juntar com outro local ou apague os lançamentos antes.`, 'Atenção');
+    customConfirm(`Excluir o local "${local.nome}"?`, async () => {
+        try {
+            await Promise.all(local.docs.map(id => deleteDoc(doc(db, 'gastos_locais', id))));
+            window.allGastosLocais = (window.allGastosLocais || []).filter(l => !local.docs.includes(l.id));
+            window.showToast('Local excluído.');
+        } catch (e) { console.error(e); window.showToast('Erro ao excluir local.', true); }
+        setTimeout(() => window.renderListaLocaisGasto(), 300);
+    });
+};
+
+// ---------- GASTOS: busca e itens sem edição na Tabela ----------
+window.filtrarBuscaGastos = function() {
+    const termo = String(document.getElementById('gastos-busca')?.value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    ['gastos-planilha-body', 'gastos-lancamentos-lista-body'].forEach(id => {
+        document.querySelectorAll(`#${id} > tr`).forEach(tr => {
+            if (tr.matches('.gastos-rebuild-total-row, .gastos-lancamentos-total-row')) return;
+            const texto = (Array.from(tr.querySelectorAll('input')).map(i => i.value).join(' ') + ' ' + tr.textContent).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            tr.style.display = !termo || texto.includes(termo) ? '' : 'none';
+        });
+    });
+};
+function travarNomesItensTabela() {
+    document.querySelectorAll('#gastos-planilha-body .gastos-item-nome-inline').forEach(i => { i.readOnly = true; i.tabIndex = -1; i.removeAttribute('onchange'); i.removeAttribute('onblur'); i.onchange = null; i.onblur = null; });
+}
+(function() {
+    const antes = aposRenderGastos;
+    aposRenderGastos = function() { antes(); try { travarNomesItensTabela(); window.filtrarBuscaGastos(); } catch (e) {} };
+})();
+(function() {
+    const limpar = window.limparFiltrosGastos;
+    window.limparFiltrosGastos = function(...a) {
+        const b = document.getElementById('gastos-busca'); if (b) b.value = '';
+        const r = limpar ? limpar.apply(this, a) : undefined;
+        window.filtrarBuscaGastos();
+        return r;
+    };
+})();
