@@ -12739,66 +12739,72 @@ const CORES_MARCA = ['#FFF5EB', '#1D2814', '#46493A', '#F4E6CB', '#7FB1C8', '#ED
 // área: geral | inicio | menu | quemsomos | cardapio | resumo | info
 // abrir: o que a prévia ao vivo abre para mostrar o elemento (menu, quemsomos, resumo, info)
 const ELEMENTOS_TEMA = [
-    ['acc', 'Destaque', '#E09F41', 'geral', 'solida', 'Cores gerais', 'Botões e destaques', '', '', ''],
-    ['txt', 'Textos', '#2C2C2C', 'geral', 'solida', 'Cores gerais', 'Textos gerais dos sites', '', '', ''],
-    ['card', 'Fundo caixas', '#FFF5EB', 'geral', 'solida', 'Cores gerais', 'Caixas, menus e cartões', '', '', ''],
-    ['bg', 'Fundo da página', '#F4E6CB', 'inicio', 'fundo', 'Página', 'Fundo da página inicial', 'body', '', ''],
-    ['menuBotaoFundo', 'Botão ☰ (fundo)', '#FFF5EB', 'inicio', 'fundo', 'Topo', 'Botão que abre o menu', '.menu-btn', 'background', ''],
-    ['menuBotaoIcone', 'Botão ☰ (ícone)', '#1D2814', 'inicio', 'solida', 'Topo', 'As três linhas do botão', '.menu-btn', 'color', ''],
-    ['corBotoes', 'Fundo dos botões', '#FFF5EB', 'inicio', 'fundo', 'Botões da capa', 'Fundo de cada cartão', '.clean-card', 'background', ''],
-    ['corIconesBotoes', 'Ícones', '#1D2814', 'inicio', 'solida', 'Botões da capa', 'Ícone de cada cartão', '.card-icon, .card-icon i', 'color', ''],
-    ['corTextoBotoes', 'Títulos', '#1D2814', 'inicio', 'solida', 'Botões da capa', 'Título de cada cartão', '.card-info h3', 'color', ''],
-    ['corLegendaBotoes', 'Legendas', '#46493A', 'inicio', 'solida', 'Botões da capa', 'Legenda de cada cartão', '.card-info p', 'color', ''],
-    ['rodapeTexto', 'Textos do rodapé', '#000000', 'inicio', 'solida', 'Rodapé', 'Assinatura e direitos', 'footer .copy, footer .desktop-signature span', 'color', ''],
-    ['corMenuLateral', 'Fundo do menu', '#FFF5EB', 'menu', 'fundo', 'Menu lateral', 'Fundo do menu ☰', '.side-menu', 'background', 'menu'],
-    ['menuFechar', 'Botão fechar (×)', '#999999', 'menu', 'solida', 'Menu lateral', 'O × no canto do menu', '.close-menu-btn', 'color', 'menu'],
-    ['menuLinks', 'Links do menu', '#1D2814', 'menu', 'solida', 'Menu lateral', 'Quem somos, Cardápio…', '.menu-link', 'color', 'menu'],
-    ['menuLinhas', 'Linhas entre links', '#F0F0F0', 'menu', 'solida', 'Menu lateral', 'Divisória dos links', '.nav-links li', 'border-bottom-color', 'menu'],
-    ['menuRedesIcone', 'Ícones das redes', '#1D2814', 'menu', 'solida', 'Redes sociais', 'Instagram, WhatsApp…', '.menu-social-link i', 'color', 'menu'],
-    ['menuRedesTexto', 'Texto das redes', '#1D2814', 'menu', 'solida', 'Redes sociais', 'Nos siga, Falar com o Favu', '.menu-social-link', 'color', 'menu'],
-    ['qsFundo', 'Fundo da janela', '#F4E6CB', 'quemsomos', 'fundo', 'Janela Quem somos', 'Fundo da janela', '#aboutModal .modal-content', 'background', 'quemsomos'],
-    ['qsTexto', 'Texto', '#666666', 'quemsomos', 'solida', 'Janela Quem somos', 'Parágrafos da história', '#aboutModal .modal-text p', 'color', 'quemsomos'],
-    ['qsDestaque', 'Frase em destaque', '#E09F41', 'quemsomos', 'solida', 'Janela Quem somos', 'Última frase', '#aboutModal .highlight', 'color', 'quemsomos'],
-    ['qsBotaoFundo', 'Botão (fundo)', '#FFF5EB', 'quemsomos', 'fundo', 'Janela Quem somos', '"Falar com o Favu"', '#aboutModal .btn-primary', 'background', 'quemsomos'],
-    ['qsBotaoTexto', 'Botão (texto)', '#1D2814', 'quemsomos', 'solida', 'Janela Quem somos', '"Falar com o Favu"', '#aboutModal .btn-primary', 'color', 'quemsomos'],
-    ['bgCardapio', 'Fundo da página', '#F4E6CB', 'cardapio', 'fundo', 'Página', 'Fundo do cardápio', 'body', '', ''],
-    ['abasBarra', 'Barra das abas', '#F4E6CB', 'cardapio', 'fundo', 'Abas de categoria', 'Faixa atrás das abas', '#categorias-nav', 'background', ''],
-    ['corBotoesCategorias', 'Abas (fundo)', '#FFFFFF', 'cardapio', 'fundo', 'Abas de categoria', 'Abas não selecionadas', '#categorias-horizontal a:not(.active-link)', 'background', ''],
-    ['corTextoCategorias', 'Abas (texto)', '#1D2814', 'cardapio', 'solida', 'Abas de categoria', 'Abas não selecionadas', '#categorias-horizontal a:not(.active-link)', 'color', ''],
-    ['abaAtivaFundo', 'Aba ativa (fundo)', '#E09F41', 'cardapio', 'fundo', 'Abas de categoria', 'Aba selecionada', '#categorias-horizontal a.active-link', 'background', ''],
-    ['abaAtivaTexto', 'Aba ativa (texto)', '#FFFFFF', 'cardapio', 'solida', 'Abas de categoria', 'Aba selecionada', '#categorias-horizontal a.active-link', 'color', ''],
-    ['corTituloCategorias', 'Título da categoria', '#E09F41', 'cardapio', 'solida', 'Título', 'Ex.: BOLOS ESPECIAIS', '.categoria-title', 'color', ''],
-    ['corFundoItens', 'Fundo da tabela', '#FFF5EB', 'cardapio', 'fundo', 'Tabela de itens', 'Caixa com os itens', '.table-card', 'background', ''],
-    ['tabCabecalho', 'Cabeçalhos', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'Item, Tamanho, Unidade…', '.table-card th', 'color', ''],
-    ['tabLinhas', 'Linhas', '#E9C998', 'cardapio', 'solida', 'Tabela de itens', 'Divisórias entre itens', '.table-card tr', 'border-bottom-color', ''],
-    ['corTituloItens', 'Nome dos itens', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'Ex.: BOLO DE BEM-CASADO', 'td.col-item, td.col-item .item-nome-texto', 'color', ''],
-    ['tabTamanho', 'Tamanho', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'P, M, G…', '.table-card td.col-sec', 'color', ''],
-    ['corDescricoes', 'Pesos e descrições', '#46493A', 'cardapio', 'solida', 'Tabela de itens', '(1.5 kg)', '.descricao, .peso-mobile', 'color', ''],
-    ['tabPreco', 'Preço', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'R$ 100,00', '.table-card td.col-unid, .table-card td.col-unid span', 'color', ''],
-    ['tabBotoesQtd', 'Botões − e +', '#E09F41', 'cardapio', 'solida', 'Tabela de itens', 'Mudar a quantidade', '.qtd-btn-table', 'color', ''],
-    ['tabCampoQtd', 'Campo da quantidade', '#FFFFFF', 'cardapio', 'fundo', 'Tabela de itens', 'Caixinha com o número', '.table-card input[type="number"]', 'background', ''],
-    ['tabIconeFoto', 'Ícone foto / (i)', '#E09F41', 'cardapio', 'solida', 'Tabela de itens', 'Abre a foto ou a descrição', '.foto-hint', 'color', ''],
-    ['obsFundo', 'Observação (fundo)', '#F8E7C9', 'cardapio', 'fundo', 'Observação da categoria', 'Caixa abaixo da tabela', '.info-box', 'background', ''],
-    ['obsTexto', 'Observação (texto)', '#1D2814', 'cardapio', 'solida', 'Observação da categoria', 'Texto da caixa', '.info-box, .info-box-content', 'color', ''],
-    ['corResumoPedido', 'Barra (fundo)', '#1D2814', 'cardapio', 'fundo', 'Barra do resumo', 'Barra fixa com o total', '#fixed-summary', 'background', ''],
-    ['resumoBarraTexto', 'Barra (textos e carrinho)', '#FFFFFF', 'cardapio', 'solida', 'Barra do resumo', 'Total, itens e carrinho', '#fixed-summary, #fixed-summary span, #fixed-summary i', 'color', ''],
-    ['corFundoResumo', 'Fundo da janela', '#FFF5EB', 'resumo', 'fundo', 'Janela do resumo', 'Fundo da janela', '#popup-resumo .popup-conteudo', 'background', 'resumo'],
-    ['resumoTitulo', 'Título', '#E09F41', 'resumo', 'solida', 'Janela do resumo', 'RESUMO DO PEDIDO', '#popup-resumo h2', 'color', 'resumo'],
-    ['resumoCategoria', 'Categorias', '#1D2814', 'resumo', 'solida', 'Janela do resumo', 'Ex.: BOLOS ESPECIAIS:', '#popup-resumo .resumo-grupo-titulo', 'color', 'resumo'],
-    ['resumoItem', 'Itens', '#1D2814', 'resumo', 'solida', 'Janela do resumo', 'Nome e tamanho', '#popup-resumo .resumo-item-name', 'color', 'resumo'],
-    ['resumoBotoesQtd', 'Botões − e +', '#E09F41', 'resumo', 'solida', 'Janela do resumo', 'Mudar a quantidade', '#popup-resumo .resumo-qtd-btn', 'color', 'resumo'],
-    ['resumoLixeira', 'Lixeira', '#E60000', 'resumo', 'solida', 'Janela do resumo', 'Tirar o item', '#popup-resumo .btn-excluir', 'color', 'resumo'],
-    ['resumoCupomBotao', 'Botão do cupom', '#7FB1C8', 'resumo', 'fundo', 'Janela do resumo', 'APLICAR', '#apply-cupom-btn', 'background', 'resumo'],
-    ['resumoTotal', 'Total', '#1D2814', 'resumo', 'solida', 'Janela do resumo', 'TOTAL: R$', '#popup-resumo-total', 'color', 'resumo'],
-    ['corBotoesResumo', 'Botão final (fundo)', '#E09F41', 'resumo', 'fundo', 'Janela do resumo', 'FAZER PEDIDO', '#popup-resumo .btn-fazer-pedido', 'background', 'resumo'],
-    ['resumoBotaoTexto', 'Botão final (texto)', '#FFFFFF', 'resumo', 'solida', 'Janela do resumo', 'FAZER PEDIDO', '#popup-resumo .btn-fazer-pedido', 'color', 'resumo'],
-    ['corFundoInfoPedido', 'Fundo da janela', '#FFF5EB', 'info', 'fundo', 'Informações do pedido', 'Fundo da janela', '#popup-pedido .popup-conteudo', 'background', 'info'],
-    ['infoTitulo', 'Título', '#E09F41', 'info', 'solida', 'Informações do pedido', 'INFORMAÇÕES DO PEDIDO', '#popup-pedido h2', 'color', 'info'],
-    ['infoRotulos', 'Rótulos', '#1D2814', 'info', 'solida', 'Informações do pedido', 'Nome, Número, Data…', '#popup-pedido label', 'color', 'info'],
-    ['infoCampos', 'Campos', '#FFFFFF', 'info', 'fundo', 'Informações do pedido', 'Onde o cliente digita', '#popup-pedido input, #popup-pedido select, #popup-pedido textarea', 'background', 'info'],
-    ['infoBotoesSec', 'Editar / Adicionar itens', '#7FB1C8', 'info', 'fundo', 'Informações do pedido', 'Botões de cima', '#popup-pedido .btn-secondary', 'background', 'info'],
-    ['corBotoesInfoPedido', 'Botão final (fundo)', '#E09F41', 'info', 'fundo', 'Informações do pedido', 'CONFIRMAR PEDIDO', '#popup-pedido .btn-primary-large', 'background', 'info'],
-    ['infoBotaoTexto', 'Botão final (texto)', '#FFFFFF', 'info', 'solida', 'Informações do pedido', 'CONFIRMAR PEDIDO', '#popup-pedido .btn-primary-large', 'color', 'info']
+    ['acc', 'Cor de destaque', '#E09F41', 'geral', 'solida', 'Cores gerais', 'Usada em botões e destaques', '', '', ''],
+    ['txt', 'Textos gerais', '#2C2C2C', 'geral', 'solida', 'Cores gerais', 'Textos comuns dos sites', '', '', ''],
+    ['card', 'Caixas e menus — fundo', '#FFF5EB', 'geral', 'solida', 'Cores gerais', 'Fundo de caixas e cartões', '', '', ''],
+    ['bg', 'Página — fundo', '#F4E6CB', 'inicio', 'fundo', 'Página', 'Fundo da página inicial', 'body', '', ''],
+    ['menuBotaoFundo', 'Botão ☰ — fundo', '#FFF5EB', 'inicio', 'fundo', 'Topo', 'Botão que abre o menu', '.menu-btn', 'background', ''],
+    ['menuBotaoIcone', 'Botão ☰ — ícone', '#1D2814', 'inicio', 'solida', 'Topo', 'As três linhas do botão', '.menu-btn', 'color', ''],
+    ['corBotoes', 'Botões da capa — fundo', '#FFF5EB', 'inicio', 'fundo', 'Botões da capa', 'Fundo de cada cartão', '.clean-card', 'background', ''],
+    ['corIconesBotoes', 'Botões da capa — ícone', '#1D2814', 'inicio', 'solida', 'Botões da capa', 'Ícone de cada cartão', '.card-icon, .card-icon i', 'color', ''],
+    ['corTextoBotoes', 'Botões da capa — título', '#1D2814', 'inicio', 'solida', 'Botões da capa', 'Ex.: QUEM SOMOS', '.card-info h3', 'color', ''],
+    ['corLegendaBotoes', 'Botões da capa — legenda', '#46493A', 'inicio', 'solida', 'Botões da capa', 'Ex.: Nossa história e essência', '.card-info p', 'color', ''],
+    ['rodapeTexto', 'Rodapé — texto', '#000000', 'inicio', 'solida', 'Rodapé', 'Assinatura e direitos', 'footer .copy, footer .desktop-signature span', 'color', ''],
+    ['corMenuLateral', 'Menu — fundo', '#FFF5EB', 'menu', 'fundo', 'Menu lateral', 'Fundo do menu ☰', '.side-menu', 'background', 'menu'],
+    ['menuFechar', 'Menu — botão fechar (×)', '#999999', 'menu', 'solida', 'Menu lateral', 'O × no canto', '.close-menu-btn', 'color', 'menu'],
+    ['menuLinks', 'Menu — links (texto)', '#1D2814', 'menu', 'solida', 'Menu lateral', 'Quem somos, Cardápio…', '.menu-link', 'color', 'menu'],
+    ['menuLinhas', 'Menu — linhas entre links', '#F0F0F0', 'menu', 'solida', 'Menu lateral', 'Divisória dos links', '.nav-links li', 'border-bottom-color', 'menu'],
+    ['menuRedesIcone', 'Redes — ícone', '#1D2814', 'menu', 'solida', 'Redes sociais', 'Instagram, WhatsApp…', '.menu-social-link i', 'color', 'menu'],
+    ['menuRedesTexto', 'Redes — texto', '#1D2814', 'menu', 'solida', 'Redes sociais', 'Nos siga, Falar com o Favu', '.menu-social-link', 'color', 'menu'],
+    ['qsFundo', 'Janela — fundo', '#F4E6CB', 'quemsomos', 'fundo', 'Janela Quem somos', 'Fundo da janela', '#aboutModal .modal-content', 'background', 'quemsomos'],
+    ['qsTexto', 'Janela — texto', '#666666', 'quemsomos', 'solida', 'Janela Quem somos', 'Parágrafos da história', '#aboutModal .modal-text p:not(.highlight)', 'color', 'quemsomos'],
+    ['qsDestaque', 'Frase em destaque — texto', '#E09F41', 'quemsomos', 'solida', 'Janela Quem somos', 'Última frase', '#aboutModal .modal-text p.highlight, #aboutModal .highlight', 'color', 'quemsomos'],
+    ['qsBotaoFundo', 'Botão — fundo', '#FFF5EB', 'quemsomos', 'fundo', 'Janela Quem somos', '"Falar com o Favu"', '#aboutModal .btn-primary', 'background', 'quemsomos'],
+    ['qsBotaoTexto', 'Botão — texto', '#1D2814', 'quemsomos', 'solida', 'Janela Quem somos', '"Falar com o Favu"', '#aboutModal .btn-primary', 'color', 'quemsomos'],
+    ['bgCardapio', 'Página — fundo', '#F4E6CB', 'cardapio', 'fundo', 'Página', 'Fundo do cardápio', 'body', '', ''],
+    ['abasBarra', 'Barra das abas — fundo', '#F4E6CB', 'cardapio', 'fundo', 'Abas de categoria', 'Faixa atrás das abas', '#categorias-nav', 'background', ''],
+    ['corBotoesCategorias', 'Botões aba — fundo', '#FFFFFF', 'cardapio', 'fundo', 'Abas de categoria', 'Abas não selecionadas', '#categorias-horizontal a:not(.active-link)', 'background', ''],
+    ['corTextoCategorias', 'Botões aba — texto', '#1D2814', 'cardapio', 'solida', 'Abas de categoria', 'Abas não selecionadas', '#categorias-horizontal a:not(.active-link)', 'color', ''],
+    ['abaAtivaFundo', 'Botão aba ativa — fundo', '#E09F41', 'cardapio', 'fundo', 'Abas de categoria', 'Aba selecionada', '#categorias-horizontal a.active-link', 'background', ''],
+    ['abaAtivaTexto', 'Botão aba ativa — texto', '#FFFFFF', 'cardapio', 'solida', 'Abas de categoria', 'Aba selecionada', '#categorias-horizontal a.active-link', 'color', ''],
+    ['corTituloCategorias', 'Título da categoria — texto', '#E09F41', 'cardapio', 'solida', 'Título', 'Ex.: BOLOS ESPECIAIS', '.categoria-title', 'color', ''],
+    ['corFundoItens', 'Tabela — fundo', '#FFF5EB', 'cardapio', 'fundo', 'Tabela de itens', 'Caixa com os itens', '.table-card', 'background', ''],
+    ['tabCabecalho', 'Tabela — cabeçalhos', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'Item, Tamanho, Unidade…', '.table-card th', 'color', ''],
+    ['tabLinhas', 'Tabela — linhas', '#E9C998', 'cardapio', 'solida', 'Tabela de itens', 'Divisórias entre itens', '.table-card tr', 'border-bottom-color', ''],
+    ['corTituloItens', 'Item — nome', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'Ex.: BOLO DE BEM-CASADO', 'td.col-item, td.col-item .item-nome-texto', 'color', ''],
+    ['tabTamanho', 'Item — tamanho', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'P, M, G…', '.table-card td.col-sec', 'color', ''],
+    ['corDescricoes', 'Item — peso', '#46493A', 'cardapio', 'solida', 'Tabela de itens', '(1.5 kg)', '.descricao, .peso-mobile', 'color', ''],
+    ['tabPreco', 'Item — preço', '#1D2814', 'cardapio', 'solida', 'Tabela de itens', 'R$ 100,00', '.table-card td.col-unid, .table-card td.col-unid span', 'color', ''],
+    ['tabIconeFoto', 'Item — ícone foto / (i)', '#E09F41', 'cardapio', 'solida', 'Tabela de itens', 'Abre a foto ou a descrição', '.foto-hint', 'color', ''],
+    ['tabBotoesQtd', 'Quantidade — botões − e +', '#E09F41', 'cardapio', 'solida', 'Tabela de itens', 'Mudar a quantidade', '.qtd-btn-table', 'color', ''],
+    ['tabCampoQtd', 'Quantidade — campo (fundo)', '#FFFFFF', 'cardapio', 'fundo', 'Tabela de itens', 'Caixinha com o número', '.table-card input[type="number"]', 'background', ''],
+    ['obsFundo', 'Observação — fundo', '#F8E7C9', 'cardapio', 'fundo', 'Observação da categoria', 'Caixa abaixo da tabela', '.info-box', 'background', ''],
+    ['obsTexto', 'Observação — texto', '#1D2814', 'cardapio', 'solida', 'Observação da categoria', 'Texto da caixa', '.info-box, .info-box-content', 'color', ''],
+    ['corResumoPedido', 'Barra do resumo — fundo', '#1D2814', 'cardapio', 'fundo', 'Barra do resumo', 'Barra fixa com o total', '#fixed-summary', 'background', ''],
+    ['resumoBarraTexto', 'Barra do resumo — texto', '#FFFFFF', 'cardapio', 'solida', 'Barra do resumo', 'Total e quantidade de itens', '#fixed-summary #summary-text, #fixed-summary #summary-text span', 'color', ''],
+    ['resumoBarraCarrinho', 'Barra do resumo — carrinho', '#FFFFFF', 'cardapio', 'solida', 'Barra do resumo', 'Ícone do carrinho', '#fixed-summary #summary-button, #fixed-summary #summary-button i', 'color', ''],
+    ['corFundoResumo', 'Janela — fundo', '#FFF5EB', 'resumo', 'fundo', 'Janela do resumo', 'Fundo da janela', '#popup-resumo .popup-conteudo', 'background', 'resumo'],
+    ['resumoTitulo', 'Título — texto', '#E09F41', 'resumo', 'solida', 'Janela do resumo', 'RESUMO DO PEDIDO', '#popup-resumo h2', 'color', 'resumo'],
+    ['resumoCategoria', 'Categoria — texto', '#1D2814', 'resumo', 'solida', 'Itens do resumo', 'Ex.: BOLOS ESPECIAIS:', '#popup-resumo .resumo-grupo-titulo', 'color', 'resumo'],
+    ['resumoItem', 'Item — nome', '#1D2814', 'resumo', 'solida', 'Itens do resumo', 'Nome e tamanho', '#popup-resumo .resumo-item-name', 'color', 'resumo'],
+    ['resumoItemTotal', 'Item — valor', '#46493A', 'resumo', 'solida', 'Itens do resumo', 'R$ do item', '#popup-resumo .resumo-item-name small', 'color', 'resumo'],
+    ['resumoBotoesQtd', 'Item — botões − e +', '#E09F41', 'resumo', 'solida', 'Itens do resumo', 'Mudar a quantidade', '#popup-resumo .resumo-qtd-btn', 'color', 'resumo'],
+    ['resumoLixeira', 'Item — lixeira', '#E60000', 'resumo', 'solida', 'Itens do resumo', 'Tirar o item', '#popup-resumo .btn-excluir', 'color', 'resumo'],
+    ['resumoCupomBotao', 'Botão do cupom — fundo', '#7FB1C8', 'resumo', 'fundo', 'Cupom', 'APLICAR', '#apply-cupom-btn', 'background', 'resumo'],
+    ['resumoCupomTexto', 'Botão do cupom — texto', '#FFFFFF', 'resumo', 'solida', 'Cupom', 'APLICAR', '#apply-cupom-btn', 'color', 'resumo'],
+    ['resumoTotal', 'Total — texto', '#1D2814', 'resumo', 'solida', 'Total e botão', 'TOTAL: R$', '#popup-resumo-total', 'color', 'resumo'],
+    ['corBotoesResumo', 'Botão "Fazer pedido" — fundo', '#E09F41', 'resumo', 'fundo', 'Total e botão', 'FAZER PEDIDO', '#popup-resumo .btn-fazer-pedido', 'background', 'resumo'],
+    ['resumoBotaoTexto', 'Botão "Fazer pedido" — texto', '#FFFFFF', 'resumo', 'solida', 'Total e botão', 'FAZER PEDIDO', '#popup-resumo .btn-fazer-pedido', 'color', 'resumo'],
+    ['corFundoInfoPedido', 'Janela — fundo', '#FFF5EB', 'info', 'fundo', 'Janela', 'Fundo da janela', '#popup-pedido .popup-conteudo', 'background', 'info'],
+    ['infoTitulo', 'Título — texto', '#E09F41', 'info', 'solida', 'Janela', 'INFORMAÇÕES DO PEDIDO', '#popup-pedido h2', 'color', 'info'],
+    ['infoRotulos', 'Rótulos — texto', '#1D2814', 'info', 'solida', 'Campos', 'Nome, Número, Data…', '#popup-pedido label', 'color', 'info'],
+    ['infoCampos', 'Campos — fundo', '#FFFFFF', 'info', 'fundo', 'Campos', 'Onde o cliente digita', '#popup-pedido input, #popup-pedido select, #popup-pedido textarea', 'background', 'info'],
+    ['infoEditarFundo', 'Botão "Editar pedido" — fundo', '#7FB1C8', 'info', 'fundo', 'Botões', 'EDITAR PEDIDO', '#popup-pedido .btn-secondary[onclick*="editarPedido"]', 'background', 'info'],
+    ['infoEditarTexto', 'Botão "Editar pedido" — texto', '#FFFFFF', 'info', 'solida', 'Botões', 'EDITAR PEDIDO', '#popup-pedido .btn-secondary[onclick*="editarPedido"]', 'color', 'info'],
+    ['infoAdicionarFundo', 'Botão "Adicionar itens" — fundo', '#7FB1C8', 'info', 'fundo', 'Botões', 'ADICIONAR ITENS', '#popup-pedido .btn-secondary[onclick*="fecharPopup"]', 'background', 'info'],
+    ['infoAdicionarTexto', 'Botão "Adicionar itens" — texto', '#FFFFFF', 'info', 'solida', 'Botões', 'ADICIONAR ITENS', '#popup-pedido .btn-secondary[onclick*="fecharPopup"]', 'color', 'info'],
+    ['corBotoesInfoPedido', 'Botão "Confirmar pedido" — fundo', '#E09F41', 'info', 'fundo', 'Botões', 'CONFIRMAR PEDIDO', '#popup-pedido .btn-primary-large', 'background', 'info'],
+    ['infoBotaoTexto', 'Botão "Confirmar pedido" — texto', '#FFFFFF', 'info', 'solida', 'Botões', 'CONFIRMAR PEDIDO', '#popup-pedido .btn-primary-large', 'color', 'info']
 ];
 const AREAS_TEMA = [
     ['geral', 'Geral', 'Vale para a página inicial e para o cardápio.'],
@@ -12823,12 +12829,12 @@ const SITE_PADRAO_TEMA = Object.fromEntries(CAMPOS_COR_TEMA.map(c => [c[0], c[2]
 // [campo, rótulo, ajuda, seção, largura ideal, altura ideal]
 // [campo, rótulo, ajuda, área, largura ideal, altura ideal, grupo, seletor, abrir, imagem padrão]
 const CAMPOS_IMG_TEMA = [
-    ['imgTopo', 'Faixa do topo', 'Cabeçalho dos dois sites', 'inicio', 1376, 196, 'Topo', 'header', '', 'topo.png'],
-    ['logoPrincipal', 'Logo principal', 'Logo grande da página inicial', 'inicio', 800, 471, 'Logo', '.hero-logo-big', '', 'favu.png'],
-    ['imgRodape', 'Faixa do rodapé', 'Rodapé dos dois sites', 'inicio', 1376, 196, 'Rodapé', 'footer', '', 'roda.png'],
-    ['logoRodape', 'Logo do rodapé', 'Rodapé no celular', 'inicio', 800, 471, 'Rodapé', '.footer-logo', '', 'logoroda.png'],
-    ['logoMenu', 'Logo do menu', 'Em branco = logo principal', 'menu', 800, 471, 'Menu lateral', '.menu-logo-img', 'menu', 'favu.png'],
-    ['imgQuemSomos', 'Imagem', 'Imagem no topo da janela', 'quemsomos', 600, 600, 'Janela Quem somos', '#aboutModal .modal-img', 'quemsomos', 'BS.png']
+    ['imgTopo', 'Topo — faixa (imagem)', 'Cabeçalho dos dois sites', 'inicio', 1376, 196, 'Topo', 'header', '', 'topo.png'],
+    ['logoPrincipal', 'Logo principal — imagem', 'Logo grande da página inicial', 'inicio', 800, 471, 'Logo', '.hero-logo-big', '', 'favu.png'],
+    ['imgRodape', 'Rodapé — faixa (imagem)', 'Rodapé dos dois sites', 'inicio', 1376, 196, 'Rodapé', 'footer', '', 'roda.png'],
+    ['logoRodape', 'Rodapé — logo', 'Rodapé no celular', 'inicio', 800, 471, 'Rodapé', '.footer-logo', '', 'logoroda.png'],
+    ['logoMenu', 'Menu — logo', 'Em branco = logo principal', 'menu', 800, 471, 'Menu lateral', '.menu-logo-img', 'menu', 'favu.png'],
+    ['imgQuemSomos', 'Janela — imagem', 'Imagem no topo da janela', 'quemsomos', 600, 600, 'Janela Quem somos', '#aboutModal .modal-img', 'quemsomos', 'BS.png']
 ];
 const CHAVES_IMG_TEMA = CAMPOS_IMG_TEMA.map(c => c[0]);
 const ROTULO_IMG_TEMA = Object.fromEntries(CAMPOS_IMG_TEMA.map(c => [c[0], [c[1], `${c[2]} · ideal ${c[4]} × ${c[5]} px${/logo|imgQuemSomos/i.test(c[0]) ? ', PNG transparente' : ''}`]]));
@@ -12874,7 +12880,7 @@ function gerarIdTema() {
 
 async function salvarListaTemas() {
     const lista = temasLista.map(t => {
-        const limpo = { id: t.id, nome: t.nome || 'Tema', ordem: t.ordem || 0, agendaInicio: t.agendaInicio || '', agendaFim: t.agendaFim || '' };
+        const limpo = { id: t.id, nome: t.nome || 'Tema', ordem: t.ordem || 0, agendaInicio: t.agendaInicio || '', agendaFim: t.agendaFim || '', conteudoInicio: t.conteudoInicio || '', conteudoCardapio: t.conteudoCardapio || '' };
         CHAVES_COR_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         CHAVES_IMG_TEMA.forEach(k => { limpo[k] = t[k] || ''; });
         return limpo;
@@ -12911,6 +12917,17 @@ function regrasCssTema(valorDe) {
     return regras;
 }
 // O que vai para config/tema (o que os sites leem): tudo já resolvido.
+// Botões e textos de cada página dentro do tema. Vazio = segue o tema Padrão;
+// o Padrão vazio = o que já estava salvo no site (config/site_*) ou o original.
+const chaveConteudo = pg => pg === 'inicio' ? 'conteudoInicio' : 'conteudoCardapio';
+function conteudoBaseTema(temaId, pg) {
+    const base = (window.__siteBase || {})[pg] || (pg === 'inicio' ? padraoSiteInicio() : padraoSiteCardapio());
+    if (temaId === 'padrao') return base;
+    return getTemaPadrao()[chaveConteudo(pg)] || base;
+}
+function conteudoEfetivoTema(t, pg) {
+    return (t && t[chaveConteudo(pg)]) || conteudoBaseTema(t?.id, pg);
+}
 function dadosPublicosTema(t) {
     const out = { nome: t.nome || '' };
     ['bg', 'card', 'txt', 'acc', 'bgCardapio'].forEach(k => {
@@ -12918,6 +12935,8 @@ function dadosPublicosTema(t) {
         out[k] = (k === 'bgCardapio' && normCor(v) === normCor(SITE_PADRAO_TEMA[k])) ? '' : v;
     });
     out.regrasCss = regrasCssTema(k => valorEfetivoTema(t, k));
+    out.conteudoInicio = conteudoEfetivoTema(t, 'inicio');
+    out.conteudoCardapio = conteudoEfetivoTema(t, 'cardapio');
     CHAVES_IMG_TEMA.forEach(k => { out[k] = imagemEfetivaTema(t, k); });
     return out;
 }
@@ -12928,6 +12947,7 @@ async function publicarTemaNoSite(t) {
 
 async function carregarTemas() {
     try {
+        if (!window.__siteBase) await carregarEditorSite();
         const [listaSnap, ativo] = await Promise.all([getDoc(doc(db, 'config', 'temas_lista')), getDoc(doc(db, 'config', 'tema'))]);
         const atual = ativo.exists() ? ativo.data() : {};
         temaAtivoId = atual.temaAtivoId || '';
@@ -13119,7 +13139,15 @@ window.abrirEditorTema = function(id = '') {
         modal.className = 'modal';
         document.body.appendChild(modal);
     }
-    const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {} };
+    const pagina = window.__paginaLayout === 'cardapio' ? 'cardapio' : 'inicio';
+    const ed = window.__temaEdicao = { id: id || '', imgs: {}, arquivos: {}, cores: {}, pagina };
+    // Botões e textos desta página, dentro do tema (cópia para editar).
+    window.__siteEd = window.__siteEd || {};
+    window.__siteEd[pagina] = JSON.parse(JSON.stringify(conteudoEfetivoTema(id ? t : { id: '' }, pagina)));
+    const AREAS_PAGINA = { inicio: ['geral', 'inicio', 'menu', 'quemsomos'], cardapio: ['geral', 'cardapio', 'menu', 'resumo', 'info'] }[pagina];
+    const areasEditor = AREAS_TEMA.filter(([a]) => AREAS_PAGINA.includes(a));
+    const [agIniData, agIniHora] = String(t.agendaInicio || '').split('T');
+    const [agFimData, agFimHora] = String(t.agendaFim || '').split('T');
     CHAVES_IMG_TEMA.forEach(k => { ed.imgs[k] = t[k] || ''; });
     CHAVES_COR_TEMA.forEach(k => { ed.cores[k] = t[k] || basePadraoCampo(ed.id, k); });
     // Áreas (abas) → grupos → elementos. Cada caixa, ao clicar, pisca o elemento na prévia ao vivo.
@@ -13132,19 +13160,24 @@ window.abrirEditorTema = function(id = '') {
     };
     modal.innerHTML = `
         <div class="modal-content tema-editor-content">
-            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
+            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'} · ${pagina === 'cardapio' ? 'Cardápio' : 'Página inicial'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
             <div class="modal-body tema-editor-corpo">
                 <div class="tema-editor-campos">
                     <div style="margin-bottom:12px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026" ${id === 'padrao' ? 'readonly' : ''}></div>
-                    <div class="prod-tabs tema-areas">${AREAS_TEMA.map(([a, n], i) => `<button type="button" class="prod-tab-btn ${i === 0 ? 'active' : ''}" data-area-tema="${a}" onclick="window.trocarAreaTema('${a}')">${n}</button>`).join('')}<button type="button" class="prod-tab-btn" data-area-tema="agenda" onclick="window.trocarAreaTema('agenda')">Agendamento</button></div>
-                    ${AREAS_TEMA.map(([a, , ajuda], i) => `<div class="tema-area" data-painel-area="${a}" ${i ? 'style="display:none;"' : ''}>${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda} Cores com "padrão" mantêm a cor do tema Padrão.</small>` : `<small class="tema-campo-ajuda tema-secao-ajuda">Cores com "padrão" mantêm a cor do tema Padrão.</small>`}${htmlArea(a)}</div>`).join('')}
+                    <div class="prod-tabs tema-areas"><button type="button" class="prod-tab-btn active" data-area-tema="conteudo" onclick="window.trocarAreaTema('conteudo')">Botões e textos</button>${areasEditor.map(([a, n]) => `<button type="button" class="prod-tab-btn" data-area-tema="${a}" onclick="window.trocarAreaTema('${a}')">${n}</button>`).join('')}<button type="button" class="prod-tab-btn" data-area-tema="agenda" onclick="window.trocarAreaTema('agenda')">Agendamento</button></div>
+                    <div class="tema-area" data-painel-area="conteudo"><small class="tema-campo-ajuda tema-secao-ajuda">Botões, links e textos ${pagina === 'cardapio' ? 'do cardápio' : 'da página inicial'} neste tema. Sem mudanças, seguem o tema Padrão.</small><div id="editor-site-${pagina}" class="tema-conteudo-pagina"></div></div>
+                    ${areasEditor.map(([a, , ajuda]) => `<div class="tema-area" data-painel-area="${a}" style="display:none;">${ajuda ? `<small class="tema-campo-ajuda tema-secao-ajuda">${ajuda} Cores com "padrão" mantêm a cor do tema Padrão.</small>` : `<small class="tema-campo-ajuda tema-secao-ajuda">Cores com "padrão" mantêm a cor do tema Padrão.</small>`}${htmlArea(a)}</div>`).join('')}
                     <div class="tema-area" data-painel-area="agenda" style="display:none;">
                         <div class="tema-secao">
                             <h4 class="font-display tema-secao-titulo">Agendamento (opcional)</h4>
                             <small class="tema-campo-ajuda tema-secao-ajuda">Com início e/ou fim, o tema entra e sai do ar sozinho nesse período. Fora dele, os sites voltam ao tema aplicado.</small>
-                            <div class="form-grid tema-agenda-grade">
-                                <div><label>Início</label><input type="datetime-local" id="tema-agenda-inicio" value="${escapeHtmlPedido(t.agendaInicio || '')}"></div>
-                                <div><label>Fim</label><input type="datetime-local" id="tema-agenda-fim" value="${escapeHtmlPedido(t.agendaFim || '')}"></div>
+                            <div class="cat-schedule-box tema-agenda-caixa">
+                                <div class="form-grid">
+                                    <div><label>Data início</label><input type="date" id="tema-agenda-ini-data" value="${escapeHtmlPedido(agIniData || '')}"></div>
+                                    <div><label>Hora início</label><input type="time" id="tema-agenda-ini-hora" value="${escapeHtmlPedido(agIniHora || '')}"></div>
+                                    <div><label>Data fim</label><input type="date" id="tema-agenda-fim-data" value="${escapeHtmlPedido(agFimData || '')}"></div>
+                                    <div><label>Hora fim</label><input type="time" id="tema-agenda-fim-hora" value="${escapeHtmlPedido(agFimHora || '')}"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -13167,15 +13200,23 @@ window.abrirEditorTema = function(id = '') {
         </div>`;
     window.openModal('modal-editor-tema');
     CHAVES_IMG_TEMA.forEach(mostrarPreviaImgTema);
-    window.trocarPaginaAoVivo('index.html');
+    renderEditorSite(pagina);
+    // Retrato do conteúdo como abriu (no mesmo formato do editor), para saber se mudou.
+    lerCamposFixosSite(pagina);
+    ed.conteudoInicial = JSON.stringify(window.__siteEd[pagina]);
+    window.trocarPaginaAoVivo(pagina === 'cardapio' ? 'cardapio.html' : 'index.html');
 };
 
 // ---------- Prévia ao vivo dentro do editor ----------
 window.trocarAreaTema = function(area) {
     document.querySelectorAll('#modal-editor-tema [data-area-tema]').forEach(b => b.classList.toggle('active', b.dataset.areaTema === area));
     document.querySelectorAll('#modal-editor-tema [data-painel-area]').forEach(p => { p.style.display = p.dataset.painelArea === area ? '' : 'none'; });
-    if (area === 'cardapio' || area === 'resumo' || area === 'info') window.trocarPaginaAoVivo('cardapio.html');
-    else if (area === 'inicio') window.trocarPaginaAoVivo('index.html');
+    // Abre na prévia a parte que está sendo editada (menu, Quem somos, janelas).
+    const pg = window.__temaEdicao?.pagina === 'cardapio' ? 'cardapio.html' : 'index.html';
+    const abrir = { menu: 'menu', quemsomos: 'quemsomos', resumo: 'resumo', info: 'info' }[area] || '';
+    window.trocarPaginaAoVivo(pg, () => {
+        try { iframeAoVivo().contentWindow.postMessage({ tipo: 'favu-destacar', seletor: '', abrir }, location.origin); } catch (e) {}
+    });
 };
 function iframeAoVivo() { return document.getElementById('tema-previa-viva'); }
 window.trocarPaginaAoVivo = function(pagina, depois) {
@@ -13199,8 +13240,15 @@ window.enviarTemaAoVivo = function() {
         if (ed.arquivos[k]) { ed.__blobs = ed.__blobs || {}; if (!ed.__blobs[k] || ed.__blobs[k].f !== ed.arquivos[k]) ed.__blobs[k] = { f: ed.arquivos[k], u: URL.createObjectURL(ed.arquivos[k]) }; dados[k] = ed.__blobs[k].u; }
         else dados[k] = ed.imgs[k] || (ed.id !== 'padrao' ? (getTemaPadrao()[k] || '') : '');
     });
+    // Botões e textos da página que está sendo editada.
+    try { if (ed.pagina && window.__siteEd?.[ed.pagina]) { lerCamposFixosSite(ed.pagina); dados[chaveConteudo(ed.pagina)] = window.__siteEd[ed.pagina]; } } catch (e) {}
     try { f.contentWindow.postMessage({ tipo: 'favu-tema-ao-vivo', dados }, location.origin); } catch (e) {}
 };
+// Mudanças nos botões e textos também vão para a prévia (com um pequeno intervalo).
+let __timerConteudoVivo = null;
+function avisarConteudoAoVivo() { clearTimeout(__timerConteudoVivo); __timerConteudoVivo = setTimeout(() => window.enviarTemaAoVivo?.(), 350); }
+document.addEventListener('input', e => { if (e.target.closest?.('#modal-editor-tema .tema-conteudo-pagina')) avisarConteudoAoVivo(); });
+document.addEventListener('change', e => { if (e.target.closest?.('#modal-editor-tema .tema-conteudo-pagina')) avisarConteudoAoVivo(); });
 window.destacarElementoTema = function(campo) {
     const e = ELEMENTOS_TEMA.find(x => x[0] === campo), im = CAMPOS_IMG_TEMA.find(x => x[0] === campo);
     const seletor = e ? (e[7] === 'body' ? '' : e[7]) : (im ? im[7] : '');
@@ -13326,10 +13374,19 @@ window.salvarTema = async function() {
         const imgs = { ...ed.imgs };
         for (const [campo, file] of Object.entries(ed.arquivos)) imgs[campo] = await enviarImagemTema(file);
         etapa = 'tema';
-        const agendaInicio = document.getElementById('tema-agenda-inicio')?.value || '';
-        const agendaFim = document.getElementById('tema-agenda-fim')?.value || '';
+        const juntar = (d, h) => d ? `${d}T${h || '00:00'}` : '';
+        const agendaInicio = juntar(document.getElementById('tema-agenda-ini-data')?.value, document.getElementById('tema-agenda-ini-hora')?.value);
+        const agendaFim = juntar(document.getElementById('tema-agenda-fim-data')?.value, document.getElementById('tema-agenda-fim-hora')?.value || '23:59');
         if (agendaInicio && agendaFim && agendaFim <= agendaInicio) { customAlert('No agendamento, o fim precisa ser depois do início.', 'Atenção'); if (btn) { btn.disabled = false; btn.innerHTML = 'Salvar tema'; } return; }
         const dados = { id: ed.id || gerarIdTema(), nome, ordem: anterior.ordem || Date.now(), agendaInicio, agendaFim, ...imgs };
+        // Botões e textos da página editada (iguais aos do Padrão = vazio, segue o Padrão).
+        dados.conteudoInicio = anterior.conteudoInicio || '';
+        dados.conteudoCardapio = anterior.conteudoCardapio || '';
+        lerCamposFixosSite(ed.pagina);
+        const conteudoEditado = JSON.parse(JSON.stringify(window.__siteEd[ed.pagina]));
+        ['botoesCapa', 'menuLateral', 'redes'].forEach(k => { if (Array.isArray(conteudoEditado[k])) conteudoEditado[k].forEach((it, i) => { it.ordem = i; }); });
+        const mudou = JSON.stringify(window.__siteEd[ed.pagina]) !== ed.conteudoInicial;
+        if (mudou) dados[chaveConteudo(ed.pagina)] = conteudoEditado;
         // Cor igual ao padrão é gravada vazia: assim continua seguindo o Padrão.
         CHAVES_COR_TEMA.forEach(k => {
             const v = ed.cores[k];
@@ -14139,15 +14196,19 @@ async function carregarEditorSite() {
         console.error(e);
         window.__siteEd = { inicio: padraoSiteInicio(), cardapio: padraoSiteCardapio() };
     }
-    renderEditorSite('inicio');
-    renderEditorSite('cardapio');
+    // Base de botões e textos: o que já estava salvo no site (ou o original).
+    window.__siteBase = JSON.parse(JSON.stringify(window.__siteEd));
 }
 window.carregarEditorSite = carregarEditorSite;
 
+// Layout: Página inicial | Cardápio. A página escolhida define o que o editor do tema mostra.
+window.__paginaLayout = 'inicio';
 window.trocarSubAbaLayout = function(sub) {
-    document.querySelectorAll('#t-tema [data-sub-layout]').forEach(b => b.classList.toggle('active', b.dataset.subLayout === sub));
-    document.querySelectorAll('#t-tema [data-painel-layout]').forEach(p => { p.style.display = p.dataset.painelLayout === sub ? '' : 'none'; });
-    if ((sub === 'inicio' || sub === 'cardapio') && !window.__siteEd.inicio) carregarEditorSite();
+    window.__paginaLayout = sub === 'cardapio' ? 'cardapio' : 'inicio';
+    document.querySelectorAll('#t-tema [data-sub-layout]').forEach(b => b.classList.toggle('active', b.dataset.subLayout === window.__paginaLayout));
+    document.querySelectorAll('#t-tema [data-painel-layout]').forEach(p => { p.style.display = p.dataset.painelLayout === window.__paginaLayout ? '' : 'none'; });
+    const titulo = document.getElementById('titulo-temas-layout');
+    if (titulo) titulo.textContent = window.__paginaLayout === 'cardapio' ? 'Temas do cardápio' : 'Temas da página inicial';
 };
 
 const LINK_PADRAO_ACAO = { cardapio: 'cardapio.html', inicio: 'index.html' };
@@ -14161,6 +14222,7 @@ function linhaItemSite(site, lista, item, idx, total, opc) {
         : `<div class="site-campo site-campo-link"><label>${acao[2] || 'Link'}</label><input type="text" value="${escapeHtmlPedido(item.link || LINK_PADRAO_ACAO[acaoId] || '')}" placeholder="${LINK_PADRAO_ACAO[acaoId] || ''}" oninput="${base},'link',this.value)"></div>`;
     const icone = item.icone || 'fas fa-link';
     return `<div class="site-item ${item.visivel === false ? 'site-item-oculto' : ''}">
+        <div class="site-item-corpo">
         <div class="site-item-campos">
             ${opc.icone ? `<div class="site-campo site-campo-icone"><label>Ícone</label>
                 <button type="button" class="site-icone-btn" title="Trocar ícone" onclick="this.nextElementSibling.classList.toggle('aberta')"><i class="${escapeHtmlPedido(icone)}"></i></button>
@@ -14170,7 +14232,8 @@ function linhaItemSite(site, lista, item, idx, total, opc) {
             ${opc.legenda ? `<div class="site-campo"><label>Legenda</label><input type="text" value="${escapeHtmlPedido(item.legenda || '')}" oninput="${base},'legenda',this.value)"></div>` : ''}
             <div class="site-campo"><label>Ação</label><select onchange="${base},'acao',this.value); window.editarItemSite('${site}','${lista}',${idx},'link',''); window.renderEditorSite('${site}')">${Object.entries(ACOES_SITE).map(([v, [n]]) => `<option value="${v}" ${v === acaoId ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
             ${campoLink}
-            <small class="site-item-regra"><i class="fas fa-info-circle"></i> Regra: ${acao[1]}</small>
+        </div>
+        <small class="site-item-regra"><i class="fas fa-info-circle"></i> Regra: ${acao[1]}</small>
         </div>
         <div class="site-item-botoes">
             <button type="button" class="btn-action" title="Subir" ${idx === 0 ? 'disabled' : ''} onclick="window.moverItemSite('${site}','${lista}',${idx},-1)"><i class="fas fa-arrow-up"></i></button>
@@ -14190,6 +14253,7 @@ function blocoListaSite(site, lista, titulo, ajuda, opc) {
     </section>`;
 }
 function rodapeSalvarSite(site) {
+    return ''; // 2026-10-15: botões e textos agora são salvos junto com o tema.
     return `<div class="site-salvar-barra">
         <button type="button" class="btn btn-secondary" onclick="window.abrirPreviaSite('${site}')"><i class="fas fa-eye"></i> Ver prévia</button>
         <button type="button" class="btn btn-primary" onclick="window.salvarEditorSite('${site}')"><i class="fas fa-save"></i> Salvar ${site === 'inicio' ? 'página inicial' : 'cardápio'}</button>
@@ -14284,10 +14348,12 @@ window.moverItemSite = function(site, lista, idx, dir) {
     if (j < 0 || j >= arr.length) return;
     [arr[idx], arr[j]] = [arr[j], arr[idx]];
     redesenharSite(site);
+    avisarConteudoAoVivo();
+    avisarConteudoAoVivo();
 };
 window.apagarItemSite = function(site, lista, idx) {
     const it = window.__siteEd[site][lista][idx];
-    customConfirm(`Apagar "${it.titulo || 'item'}"?`, () => { window.__siteEd[site][lista].splice(idx, 1); redesenharSite(site); });
+    customConfirm(`Apagar "${it.titulo || 'item'}"?`, () => { window.__siteEd[site][lista].splice(idx, 1); redesenharSite(site); avisarConteudoAoVivo(); });
 };
 window.adicionarItemSite = function(site, lista) {
     const novo = { id: novoIdSite(), titulo: 'Novo botão', acao: 'link', link: '', visivel: true };
@@ -14295,6 +14361,7 @@ window.adicionarItemSite = function(site, lista) {
     if (lista === 'redes') Object.assign(novo, { icone: 'fas fa-link' });
     window.__siteEd[site][lista].push(novo);
     redesenharSite(site);
+    avisarConteudoAoVivo();
 };
 window.salvarEditorSite = async function(site) {
     lerCamposFixosSite(site);

@@ -5949,23 +5949,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
             </div>
 
             <div id="t-tema" class="tab-pane">
-                <!-- 2026-10-15: Layout com três sub-abas: Temas, Página inicial e Cardápio -->
+                <!-- 2026-10-15: o tema é um dado de cada página. Escolha a página e abra o
+                     tema: o editor mostra os botões, textos, cores e imagens só daquela página. -->
+                <div class="buttons-area layout-topo-botoes"><button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button></div>
                 <div class="prod-tabs layout-subabas">
-                    <button type="button" class="prod-tab-btn active" data-sub-layout="temas" onclick="window.trocarSubAbaLayout('temas')"><i class="fas fa-palette"></i> Temas</button>
-                    <button type="button" class="prod-tab-btn" data-sub-layout="inicio" onclick="window.trocarSubAbaLayout('inicio')"><i class="fas fa-home"></i> Página inicial</button>
+                    <button type="button" class="prod-tab-btn active" data-sub-layout="inicio" onclick="window.trocarSubAbaLayout('inicio')"><i class="fas fa-home"></i> Página inicial</button>
                     <button type="button" class="prod-tab-btn" data-sub-layout="cardapio" onclick="window.trocarSubAbaLayout('cardapio')"><i class="fas fa-utensils"></i> Cardápio</button>
                 </div>
-                <div data-painel-layout="temas">
                 <section class="panel-card secao-aba" id="secao-temas">
-                    <div class="secao-aba-cabecalho">
-                        <h2 class="font-display">Temas do Site</h2>
-                        <button type="button" class="btn btn-primary" onclick="window.abrirEditorTema()"><i class="fas fa-plus"></i> Adicionar tema</button>
+                    <div class="secao-aba-cabecalho secao-aba-cabecalho-centro">
+                        <h2 class="font-display" id="titulo-temas-layout">Temas da página inicial</h2>
                     </div>
                     <div id="lista-temas" class="temas-grid"></div>
                 </section>
-                </div>
-                <div data-painel-layout="inicio" style="display:none;">
-                    <div id="editor-site-inicio"></div>
+                <div data-painel-layout="inicio">
                 <form id="form-cores" class="form-grid panel-card" style="display:none;">
                     <div><label>Fundo Principal</label><input type="color" id="cor-bg" value="#F4E6CB"></div>
                     <div><label>Fundo de Caixas/Menus</label><input type="color" id="cor-card" value="#FFF5EB"></div>
@@ -5996,9 +5993,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div id="galeria-preview" class="carrossel-admin-grid"></div>
                 </section>
                 </div>
-                <div data-painel-layout="cardapio" style="display:none;">
-                    <div id="editor-site-cardapio"></div>
-                </div>
+                <div data-painel-layout="cardapio" style="display:none;"></div>
             </div>
 
             <div id="t-orcamentos" class="tab-pane" style="position: relative; padding-bottom: 80px; background-color: var(--bg-color);">
@@ -12803,9 +12798,59 @@ html body #modal-editor-tema .tema-editor-corpo { display: grid; grid-template-c
     #t-tema .site-item-campos { grid-template-columns: 1fr !important; }
     #t-tema .site-item-botoes { justify-content: center; }
 }
+
+/* 2026-10-15 (12): botões e textos dentro do tema; layout por página */
+#modal-editor-tema .tema-conteudo-pagina .secao-aba { padding: 14px !important; margin-bottom: 14px !important; box-shadow: none !important; border: 1px solid rgba(224,159,65,0.3) !important; }
+#modal-editor-tema .tema-conteudo-pagina .secao-aba-cabecalho h2.font-display { font-size: 1.3rem !important; color: var(--favu-green) !important; margin: 0 !important; }
+#modal-editor-tema .tema-conteudo-pagina .secao-aba-cabecalho { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* Uma linha: ícone, texto, legenda, ação, link — botões à direita */
+#modal-editor-tema .site-item, #t-tema .site-item { display: flex !important; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(224,159,65,0.3); border-radius: 12px; background: var(--favu-card); }
+#modal-editor-tema .site-item.site-item-oculto { opacity: 0.55; }
+#modal-editor-tema .site-itens { display: flex; flex-direction: column; gap: 8px; }
+#modal-editor-tema .site-item-corpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#modal-editor-tema .site-item-campos { min-width: 0; display: flex !important; flex-wrap: nowrap; gap: 6px; align-items: flex-end; }
+#modal-editor-tema .site-campo { flex: 1 1 0; min-width: 0; }
+#modal-editor-tema .site-campo-icone { flex: 0 0 auto; position: relative; }
+#modal-editor-tema .site-campo label { font-size: 0.75rem !important; margin-bottom: 2px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#modal-editor-tema .site-campo input, #modal-editor-tema .site-campo select { width: 100%; box-sizing: border-box; padding: 8px !important; font-size: 0.82rem !important; min-height: 36px; }
+#modal-editor-tema .site-item-regra { flex-basis: 100%; color: #888; font-family: var(--font-numbers); font-size: 0.72rem; }
+#modal-editor-tema .site-item-botoes { display: flex; flex-direction: row; gap: 5px; flex-wrap: nowrap; flex: 0 0 auto; }
+#modal-editor-tema .site-item-botoes .btn-action { width: 30px; height: 30px; flex: 0 0 auto; }
+#modal-editor-tema .site-item-botoes .btn-action:not(.toggle):not(.del) { background: #fff; color: var(--favu-green); border: 1px solid #ddd; }
+#modal-editor-tema .site-item-botoes .btn-action:disabled { opacity: 0.35; cursor: default; }
+#modal-editor-tema .site-icone-btn { width: 40px; height: 36px; border-radius: 10px; border: 1px solid rgba(224,159,65,0.45); background: #fff; color: var(--favu-green); font-size: 1.05rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#modal-editor-tema .site-icone-grade { display: none; position: absolute; z-index: 30; top: 100%; left: 0; margin-top: 4px; background: #fff; border: 1px solid rgba(224,159,65,0.4); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); padding: 8px; grid-template-columns: repeat(4, 36px); gap: 6px; }
+#modal-editor-tema .site-icone-grade.aberta { display: grid; }
+#modal-editor-tema .site-icone-grade button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #eee; background: #fff; color: var(--favu-green); cursor: pointer; }
+#modal-editor-tema .site-icone-grade button.sel, #modal-editor-tema .site-icone-grade button:hover { background: var(--favu-green); color: #fff; }
+#modal-editor-tema .site-campo input:disabled { background: #f5f5f5 !important; color: #999; }
+#modal-editor-tema .tema-item-caixa .tema-campo-topo label { font-size: 0.82rem !important; }
+#modal-editor-tema .tema-itens-grade { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important; }
+#modal-editor-tema .tema-agenda-caixa { margin-top: 8px; }
+/* Topo da aba Layout */
+html body #t-tema .layout-topo-botoes { display: flex; justify-content: flex-end; }
+html body #t-tema .secao-aba-cabecalho-centro { justify-content: center !important; text-align: center; }
+@media (max-width: 1000px) {
+    html body #modal-editor-tema .tema-editor-content { max-height: 96vh; }
+    html body #modal-editor-tema .tema-editor-corpo { display: flex !important; flex-direction: column; overflow-y: auto !important; }
+    html body #modal-editor-tema .tema-editor-previa { order: -1; position: static !important; flex: 0 0 52vh; height: 52vh; margin-bottom: 14px; }
+    html body #modal-editor-tema #tema-previa-viva { height: calc(52vh - 44px) !important; min-height: 0 !important; flex: none !important; }
+    html body #modal-editor-tema .tema-editor-campos { max-height: none !important; overflow: visible !important; padding-right: 0; }
+}
+@media (max-width: 600px) {
+    html body #t-tema .layout-topo-botoes .btn { width: 100%; justify-content: center; }
+    html body #t-tema .layout-subabas { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; }
+    html body #t-tema .layout-subabas .prod-tab-btn { width: 100%; justify-content: center; }
+    #modal-editor-tema .site-item { flex-direction: column; align-items: stretch; }
+    #modal-editor-tema .site-item-campos { flex-direction: column; align-items: stretch; flex-wrap: wrap; }
+    #modal-editor-tema .site-campo { flex: 1 1 auto; }
+    #modal-editor-tema .site-item-botoes { justify-content: center; }
+    #modal-editor-tema .tema-itens-grade { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    #modal-editor-tema .tema-previa-topo small { display: none; }
+}
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-10"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-11"></script>
 
 
     <div id="modal-gasto-item" class="modal">
