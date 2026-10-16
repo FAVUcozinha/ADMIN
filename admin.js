@@ -4856,7 +4856,7 @@ window.renderizar = function(pedidos) {
     });
 
     window.STATUS_FLOW.forEach(s => { const c = document.querySelector(`.kanban-column[data-status="${s}"]`); if(c) c.querySelector('.count-badge').textContent = contadores[s]; });
-    if (window.innerWidth <= 768) document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('expanded'));
+    if (window.innerWidth <= 1100) document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('expanded'));
     window.configurarAcordeaoColunas(); window.atualizarDashboardPedidos();
 }
 
@@ -5002,7 +5002,7 @@ window.excluirPedidoLogico = function(id) {
 
 window.configurarAcordeaoColunas = function() {
     document.querySelectorAll('.column-header').forEach(h => { const nH = h.cloneNode(true); h.parentNode.replaceChild(nH, h); });
-    if (window.innerWidth <= 768) { document.querySelectorAll('.column-header').forEach(h => { h.addEventListener('click', (e) => { if (e.target.type === 'checkbox' || e.target.closest('.column-select-all-checkbox')) return; const c = h.closest('.kanban-column'); if (!c) return; document.querySelectorAll('.kanban-column').forEach(col => { if (col !== c) col.classList.remove('expanded'); }); c.classList.toggle('expanded'); }); }); }
+    if (window.innerWidth <= 1100) { document.querySelectorAll('.column-header').forEach(h => { h.addEventListener('click', (e) => { if (e.target.type === 'checkbox' || e.target.closest('.column-select-all-checkbox')) return; const c = h.closest('.kanban-column'); if (!c) return; document.querySelectorAll('.kanban-column').forEach(col => { if (col !== c) col.classList.remove('expanded'); }); c.classList.toggle('expanded'); }); }); }
 }
 
 window.allowDrop = function(e) {
@@ -6626,7 +6626,7 @@ window.calcularCustoProduto = async function(produtoId, precoVendaProduto) {
     }
 }
 
-document.addEventListener("DOMContentLoaded", () => { let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { window.configurarAcordeaoColunas(); if (window.innerWidth > 768) document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('expanded')); }, 250); }); });
+document.addEventListener("DOMContentLoaded", () => { let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { window.configurarAcordeaoColunas(); if (window.innerWidth > 1100) document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('expanded')); }, 250); }); });
 
 // ==========================================
 // APLICAR DESCONTO NA EDIÇÃO
@@ -14623,3 +14623,30 @@ window.exportarGastos = function() {
     if (btn) btn.click();
     else window.showToast('Exportação indisponível.', true);
 };
+
+// ---------- ATENDIMENTO: salva sozinho, sem botão e sem aviso (2026-10-15) ----------
+let __timerAtendimento = null;
+async function salvarAtendimentoSilencioso() {
+    try {
+        const agenda = {};
+        for (let i = 0; i <= 6; i++) {
+            const ativo = document.getElementById(`dia-${i}-ativo`), horas = document.getElementById(`dia-${i}-horas`);
+            if (!ativo || !horas) return;
+            agenda[i] = { ativo: ativo.checked, horarios: horas.value.trim() };
+        }
+        await setDoc(doc(db, 'config', 'agenda_geral'), agenda);
+    } catch (e) { console.error('Erro ao salvar atendimento:', e); }
+}
+function agendarSalvarAtendimento(espera = 700) { clearTimeout(__timerAtendimento); __timerAtendimento = setTimeout(salvarAtendimentoSilencioso, espera); }
+document.addEventListener('change', e => { if (e.target.closest?.('#t-horarios .agenda-dia-caixa')) agendarSalvarAtendimento(100); });
+document.addEventListener('input', e => { if (e.target.closest?.('#t-horarios .agenda-dia-caixa')) agendarSalvarAtendimento(900); });
+
+// ---------- GASTOS (Tabela): só o valor e só as unidades ----------
+function simplificarTotaisItensGastos() {
+    document.querySelectorAll('#gastos-planilha-body .gastos-rebuild-item-total-line').forEach(el => { el.textContent = el.textContent.replace(/^\s*Valor total:\s*/i, ''); });
+    document.querySelectorAll('#gastos-planilha-body .gastos-rebuild-item-units-line').forEach(el => { el.textContent = el.textContent.replace(/^\s*Total de unidades:\s*/i, ''); });
+}
+(function() {
+    const antes = aposRenderGastos;
+    aposRenderGastos = function() { antes(); try { simplificarTotaisItensGastos(); } catch (e) {} };
+})();

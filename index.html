@@ -6321,7 +6321,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             <input type="text" id="dia-0-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
                     </div>
-                    <button class="btn btn-primary agenda-save-btn" onclick="window.salvarConfigAgendaGeral()">Salvar atendimento</button>
                 </div>
                 <div data-painel-horarios="datas" class="painel-oculto">
                     <div class="panel-card agenda-datas-bloco">
@@ -12980,6 +12979,8 @@ html body #t-prods .search-filter-actions { flex: 0 1 500px; }
     html body #t-gastos #filter-bar-gastos .filter-group-main .filter-item { width: auto !important; flex: 1 1 0 !important; min-width: 0 !important; }
     html body #t-gastos #filter-bar-gastos #gastos-filtro-busca-wrap { flex: 2 1 0 !important; }
     html body #t-gastos #filter-bar-gastos .filter-group-additional, html body #t-gastos #filter-bar-gastos .filter-group-additional .filter-item { flex: 0 0 auto !important; width: auto !important; }
+}
+@media (min-width: 1101px) {
     html body #t-pedidos #filter-bar-pedidos { display: flex !important; flex-wrap: nowrap !important; align-items: flex-end !important; gap: 10px !important; }
     html body #t-pedidos #filter-bar-pedidos .filter-group-main, html body #t-pedidos #filter-bar-pedidos .filter-group-additional { display: contents !important; }
     html body #t-pedidos #filter-bar-pedidos .filter-item { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; margin: 0 !important; }
@@ -12988,11 +12989,29 @@ html body #t-prods .search-filter-actions { flex: 0 1 500px; }
     html body #t-pedidos #filter-bar-pedidos .filter-item input, html body #t-pedidos #filter-bar-pedidos .filter-item select { width: 100% !important; min-width: 0 !important; box-sizing: border-box; height: 40px; }
 }
 @media (max-width: 900px) {
-    html body #t-gastos #filter-bar-gastos .filter-item, html body #t-pedidos #filter-bar-pedidos .filter-item { width: 100% !important; flex: 1 1 100% !important; max-width: 100% !important; margin: 0 0 10px !important; align-items: stretch !important; text-align: left !important; }
-    html body #t-gastos #filter-bar-gastos .filter-item label, html body #t-pedidos #filter-bar-pedidos .filter-item label { text-align: left !important; display: block; margin-bottom: 4px; }
-    html body #t-gastos #filter-bar-gastos .filter-item input, html body #t-gastos #filter-bar-gastos .filter-item select,
-    html body #t-pedidos #filter-bar-pedidos .filter-item input, html body #t-pedidos #filter-bar-pedidos .filter-item select { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; height: 42px !important; text-align: left !important; }
-    html body #t-gastos #filter-bar-gastos .btn-clear-filter, html body #t-pedidos #filter-bar-pedidos .btn-clear-filter { width: 100% !important; }
+    html body #t-gastos #filter-bar-gastos { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; padding: 14px !important; margin: 0 !important; display: none; flex-direction: column !important; }
+    html body #t-gastos #filter-bar-gastos.show { display: flex !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main, html body #t-gastos #filter-bar-gastos .filter-group-additional { display: flex !important; flex-direction: column !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; padding: 0 !important; margin: 0 !important; gap: 0 !important; }
+    html body #t-gastos #filter-bar-gastos .filter-item { width: 100% !important; flex: 0 0 auto !important; max-width: 100% !important; margin: 0 0 12px !important; padding: 0 !important; align-items: stretch !important; text-align: left !important; box-sizing: border-box !important; }
+    html body #t-gastos #filter-bar-gastos .filter-item label { text-align: left !important; display: block; margin-bottom: 4px; }
+    html body #t-gastos #filter-bar-gastos .filter-item input, html body #t-gastos #filter-bar-gastos .filter-item select { width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; height: 42px !important; margin: 0 !important; }
+    html body #t-gastos #filter-bar-gastos .btn-clear-filter { width: 100% !important; }
+}
+@media (max-width: 1100px) {
+    /* Pedidos: até 1100 px (inclui o zoom no computador) fica no modo celular */
+    html body #t-pedidos #kanban-board { flex-direction: column !important; overflow-x: hidden !important; overflow-y: visible !important; max-height: none !important; }
+    html body #t-pedidos .kanban-column { width: 100% !important; min-width: 100% !important; max-width: 100% !important; margin-bottom: 10px !important; max-height: none !important; flex: 0 0 auto !important; }
+    html body #t-pedidos .kanban-column:not(.expanded) .column-content { display: none !important; }
+    html body #t-pedidos .column-header { cursor: pointer; height: auto !important; min-height: 60px !important; }
+    html body #t-pedidos .column-toggle { display: inline-block !important; }
+    html body #t-pedidos #filter-toggle-btn { display: block !important; padding: 10px; background: #fff; border-radius: 12px; text-align: center; cursor: pointer; border: 1px solid rgba(224,159,65,0.4); margin-bottom: 10px; }
+    html body #t-pedidos #filter-bar-pedidos { display: none !important; flex-direction: column !important; align-items: stretch !important; width: 100% !important; box-sizing: border-box !important; padding: 14px !important; }
+    html body #t-pedidos #filter-bar-pedidos.show { display: flex !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-group-main, html body #t-pedidos #filter-bar-pedidos .filter-group-additional { display: flex !important; flex-direction: column !important; width: 100% !important; padding: 0 !important; margin: 0 !important; gap: 0 !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item { width: 100% !important; flex: 0 0 auto !important; max-width: 100% !important; margin: 0 0 12px !important; padding: 0 !important; align-items: stretch !important; align-self: stretch !important; text-align: left !important; box-sizing: border-box !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item label { text-align: left !important; display: block; margin-bottom: 4px; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item input, html body #t-pedidos #filter-bar-pedidos .filter-item select, html body #t-pedidos #date-filter-display { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; height: 42px !important; margin: 0 !important; text-align: left !important; }
+    html body #t-pedidos #filter-bar-pedidos .btn-clear-filter { width: 100% !important; }
 }
 
 /* Barras de total: mesma altura; valores de cada mês cabem (sem "Total anual") */
@@ -13033,9 +13052,20 @@ html body #t-horarios .agenda-dia-caixa input[type="text"] { width: 100%; box-si
     html body #lista-temas .tema-card-nome { font-size: 1.35rem; }
     html body #lista-temas .tema-card-acoes .btn-action { width: 40px; height: 40px; }
 }
+
+/* 2026-10-15 (16) */
+/* Pedidos no computador: filtros dividem o espaço por igual (a data não fica gigante) */
+@media (min-width: 1101px) {
+    html body #t-pedidos #filter-bar-pedidos .filter-item label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    html body #t-pedidos #date-filter-display { width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box; }
+    html body #t-pedidos #filter-toggle-btn { display: none !important; }
+}
+/* Gastos: sem barra de rolagem lateral na Tabela e na Lista */
+html body #t-gastos table, html body #t-gastos tbody, html body #t-gastos .gastos-rebuild-table-card, html body #t-gastos .table-responsive { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+html body #t-gastos table::-webkit-scrollbar, html body #t-gastos tbody::-webkit-scrollbar, html body #t-gastos .gastos-rebuild-table-card::-webkit-scrollbar, html body #t-gastos .table-responsive::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-14"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-15"></script>
 
 
     <div id="modal-gasto-item" class="modal">
