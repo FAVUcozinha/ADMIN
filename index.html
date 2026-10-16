@@ -5796,10 +5796,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div class="filter-bar" id="filter-bar-pedidos">
                     <div class="filter-group-main">
                         <div class="filter-item">
-                            <label>Buscar</label>
-                            <input type="text" id="search-input-pedidos" placeholder="ID, nome ou telefone" oninput="window.filtrarPedidos()">
-                        </div>
-                        <div class="filter-item">
                             <label>Data de Entrega</label>
                             <input type="hidden" id="date-input" onchange="window.filtrarPedidos()">
                             <input type="text" id="date-filter-display" placeholder="Filtrar por Data ou intervalo" onclick="window.openDatePicker()" oninput="window.aplicarFiltroDataDigitada(this.value)" onblur="window.aplicarFiltroDataDigitada(this.value, true)" style="background:white; cursor:text;">
@@ -5823,6 +5819,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             <select id="filter-observacao" onchange="window.filtrarPedidos()">
                                 <option value="">Todos</option><option value="com">Com Observação</option><option value="sem">Sem Observação</option>
                             </select>
+                        </div>
+                        <div class="filter-item filtro-busca-direita">
+                            <label>Buscar</label>
+                            <input type="text" id="search-input-pedidos" class="search-bar" placeholder="ID, nome ou telefone" oninput="window.filtrarPedidos()">
                         </div>
                         <div class="filter-item" style="justify-content: flex-end;">
                             <button class="btn btn-outline btn-clear-filter" onclick="window.limparFiltros()"><i class="fas fa-eraser"></i> Limpar Filtros</button>
@@ -6171,6 +6171,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                         <button type="button" class="btn btn-outline" onclick="window.abrirModalMarcasGasto()"><i class="fas fa-tags"></i> Marcas</button>
                         <button type="button" class="btn btn-outline" onclick="window.abrirModalProdutosGasto()"><i class="fas fa-box"></i> Itens</button>
                         <button type="button" class="btn btn-outline" onclick="window.abrirModalLocaisGasto()"><i class="fas fa-store"></i> Local</button>
+                        <button type="button" class="btn btn-outline" onclick="window.exportarGastos()"><i class="fas fa-file-export"></i> Exportar</button>
                     </div>
 
                     <div id="filter-toggle-btn-gastos" onclick="document.getElementById('filter-bar-gastos').classList.toggle('show')">
@@ -6199,7 +6200,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                             </div>
                             <div class="filter-item" id="gastos-filtro-busca-wrap">
                                 <label>Buscar</label>
-                                <input type="text" id="gastos-busca" placeholder="Buscar..." oninput="window.filtrarBuscaGastos()">
+                                <input type="text" id="gastos-busca" class="search-bar" placeholder="Buscar..." oninput="window.filtrarBuscaGastos()">
                             </div>
                             <div class="filter-item" id="gastos-filtro-periodo-wrap" style="display:none;">
                                 <label>Período</label>
@@ -6280,56 +6281,53 @@ input[type="date"]::-webkit-calendar-picker-indicator {
                 <div class="buttons-area">
                     <button class="btn btn-primary" onclick="window.abrirModalNovaDataEspecifica()"><i class="fas fa-plus"></i> Nova Data Específica</button>
                 </div>
-
-                <div class="panel-card horarios-list-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; padding: 15px 20px;">
-                    <h2 class="font-display" style="margin: 0; font-size: 1.8rem; color: var(--favu-green);">Horários</h2>
+                <div class="panel-card aba-titulo-card"><h2 class="font-display">Horários</h2></div>
+                <!-- 2026-10-15: Atendimento | Datas específicas, como Tabela | Lista -->
+                <div class="avisos-tabs horarios-tabs">
+                    <button type="button" class="avisos-tab-btn active" data-sub-horarios="atendimento" onclick="window.trocarSubAbaHorarios('atendimento')">Atendimento</button>
+                    <button type="button" class="avisos-tab-btn" data-sub-horarios="datas" onclick="window.trocarSubAbaHorarios('datas')">Datas específicas</button>
                 </div>
-
-                <div class="agenda-admin-grid">
-                    <div class="panel-card agenda-form-card">
-                        <h2 class="font-display agenda-title"><i class="fas fa-clock"></i> Horários de Entrega</h2>
-                        <div class="agenda-dia-lista">
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-1-ativo"><span>Seg</span></label>
-                                <input type="text" id="dia-1-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-2-ativo"><span>Ter</span></label>
-                                <input type="text" id="dia-2-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-3-ativo"><span>Qua</span></label>
-                                <input type="text" id="dia-3-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-4-ativo"><span>Qui</span></label>
-                                <input type="text" id="dia-4-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-5-ativo"><span>Sex</span></label>
-                                <input type="text" id="dia-5-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-6-ativo"><span>Sáb</span></label>
-                                <input type="text" id="dia-6-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
-                            <div class="agenda-dia-row">
-                                <label class="agenda-dia-label"><input type="checkbox" id="dia-0-ativo"><span>Dom</span></label>
-                                <input type="text" id="dia-0-horas" placeholder="Ex: 11:00, 12:00, 15:00">
-                            </div>
+                <div class="panel-card agenda-form-card" data-painel-horarios="atendimento">
+                    <div class="agenda-dias-grade">
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-1-ativo"><span>Seg</span></label>
+                            <input type="text" id="dia-1-horas" placeholder="Ex: 11:00, 12:00, 15:00">
                         </div>
-                        <button class="btn btn-primary agenda-save-btn" onclick="window.salvarConfigAgendaGeral()">Salvar Horários</button>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-2-ativo"><span>Ter</span></label>
+                            <input type="text" id="dia-2-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-3-ativo"><span>Qua</span></label>
+                            <input type="text" id="dia-3-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-4-ativo"><span>Qui</span></label>
+                            <input type="text" id="dia-4-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-5-ativo"><span>Sex</span></label>
+                            <input type="text" id="dia-5-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-6-ativo"><span>Sáb</span></label>
+                            <input type="text" id="dia-6-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
+                        <div class="agenda-dia-caixa">
+                            <label class="agenda-dia-label"><input type="checkbox" id="dia-0-ativo"><span>Dom</span></label>
+                            <input type="text" id="dia-0-horas" placeholder="Ex: 11:00, 12:00, 15:00">
+                        </div>
                     </div>
-
-                    <div class="panel-card agenda-datas-card agenda-datas-card-inline">
-                        <div class="agenda-datas-header">
-                            <h2 class="font-display agenda-title"><i class="fas fa-list"></i> Datas Específicas</h2>
-                        </div>
-                        <div class="excecoes-tabs">
-                            <button type="button" id="tab-excecoes-futuras" class="excecoes-tab-btn active" onclick="window.setFiltroExcecoes('futuras')">Datas Específicas</button>
-                            <button type="button" id="tab-excecoes-passadas" class="excecoes-tab-btn" onclick="window.setFiltroExcecoes('passadas')">Datas Passadas</button>
-                        </div>
-                        <div id="lista-excecoes-container" class="lista-excecoes-grid"></div>
+                    <button class="btn btn-primary agenda-save-btn" onclick="window.salvarConfigAgendaGeral()">Salvar atendimento</button>
+                </div>
+                <div data-painel-horarios="datas" class="painel-oculto">
+                    <div class="panel-card agenda-datas-bloco">
+                        <h3 class="font-display agenda-title">Datas ativas</h3>
+                        <div id="lista-excecoes-container" class="excecoes-grade"></div>
+                    </div>
+                    <div class="panel-card agenda-datas-bloco">
+                        <h3 class="font-display agenda-title">Datas passadas</h3>
+                        <div id="lista-excecoes-passadas" class="excecoes-grade"></div>
                     </div>
                 </div>
             </div>
@@ -12839,12 +12837,12 @@ html body #modal-editor-tema .tema-editor-corpo { display: grid; grid-template-c
 #modal-editor-tema .tema-agenda-caixa { margin-top: 8px; }
 /* Topo da aba Layout */
 html body #t-tema .layout-topo-botoes { display: flex; justify-content: flex-end; }
-html body #t-tema .secao-aba-cabecalho-centro { justify-content: center !important; text-align: center; }
+html body #t-tema .secao-aba-cabecalho-centro { justify-content: flex-start !important; text-align: left; }
 @media (max-width: 1000px) {
     html body #modal-editor-tema .tema-editor-content { max-height: 96vh; }
     html body #modal-editor-tema .tema-editor-corpo { display: flex !important; flex-direction: column; overflow-y: auto !important; }
     html body #modal-editor-tema .tema-editor-previa { order: -1; position: static !important; flex: 0 0 52vh; height: 52vh; margin-bottom: 14px; }
-    html body #modal-editor-tema #tema-previa-viva { height: calc(52vh - 44px) !important; min-height: 0 !important; flex: none !important; }
+
     html body #modal-editor-tema .tema-editor-campos { max-height: none !important; overflow: visible !important; padding-right: 0; }
 }
 @media (max-width: 600px) {
@@ -12861,8 +12859,7 @@ html body #t-tema .secao-aba-cabecalho-centro { justify-content: center !importa
 
 /* 2026-10-15 (13) */
 /* Títulos das abas centralizados (Layout, Gastos) */
-html body .tab-pane .aba-titulo-centro { text-align: center; }
-html body .tab-pane .aba-titulo-centro h2.font-display { margin: 0 auto !important; }
+html body .tab-pane .aba-titulo-centro { text-align: left; }
 /* Editor do tema: abas Página inicial | Cardápio e blocos */
 #modal-editor-tema .tema-paginas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 12px; }
 #modal-editor-tema .tema-paginas .avisos-tab-btn { border-radius: 30px; padding: 10px 16px; font-family: 'Basic Choice', cursive; font-size: 0.95rem; text-transform: uppercase; background: #fff; color: var(--favu-green); border: 1px solid rgba(29,40,20,0.15); cursor: pointer; }
@@ -12906,9 +12903,73 @@ html body #t-gastos .gastos-item-nome-inline[readonly] { border: none !important
 .gasto-busca-linha { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .gasto-busca-linha .search-bar { flex: 1; min-width: 0; }
 .gasto-busca-linha .btn-clear-filter { white-space: nowrap; background: #fff !important; color: var(--favu-green) !important; border: 1px solid #ddd !important; border-radius: 10px !important; padding: 9px 12px !important; font-size: 0.85rem !important; }
+
+/* 2026-10-15 (14) */
+/* Abas no mesmo formato (Comunicados = referência) */
+html body #t-cupons .cupons-tab-btn.avisos-tab-btn { border-radius: 30px !important; padding: 10px 20px !important; }
+html body #t-gastos .gastos-tabs-tl .avisos-tab-btn, html body #t-horarios .horarios-tabs .avisos-tab-btn, html body #t-tema .layout-subabas .avisos-tab-btn { font-family: 'Basic Choice', cursive !important; font-size: 0.9rem !important; font-weight: 400 !important; border-radius: 30px !important; padding: 10px 20px !important; }
+html body .tab-pane .avisos-tabs { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 18px !important; }
+html body .tab-pane .avisos-tabs .avisos-tab-btn { width: 100% !important; }
+/* Campos de busca no modelo de Cupons */
+html body #gastos-busca, html body #search-input-pedidos, html body .tab-pane .search-bar { border: 2px solid var(--favu-rust) !important; border-radius: 30px !important; padding: 10px 16px !important; background: #fff !important; height: 42px !important; box-sizing: border-box !important; font-family: var(--font-numbers) !important; }
+/* Gastos: Marcas, Itens, Local e Exportar — 4 iguais ocupando a linha */
+html body #t-gastos .gastos-gerenciar { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+html body #t-gastos .gastos-gerenciar .btn { width: 100% !important; justify-content: center !important; min-height: 42px; }
+@media (max-width: 600px) { html body #t-gastos .gastos-gerenciar { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; flex-direction: initial; } }
+html body #t-gastos #gastos-btn-exportar-mes, html body #t-gastos #gastos-btn-exportar-planilha { display: none !important; }
+/* Gastos: Período, Item e Buscar; o Limpar filtros fica na margem direita da busca */
+html body #t-gastos #gastos-filtro-ano-wrap, html body #t-gastos #gastos-filtro-mes-wrap { order: 0; }
+html body #t-gastos #gastos-filtro-periodo-wrap { order: 1; }
+html body #t-gastos #gastos-filtro-item-wrap { order: 2; }
+html body #t-gastos #gastos-filtro-busca-wrap { order: 3; }
+@media (min-width: 901px) {
+    html body #t-gastos #filter-bar-gastos { flex-wrap: nowrap !important; align-items: flex-end !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-main { flex: 1 1 auto !important; flex-wrap: nowrap !important; }
+    html body #t-gastos #filter-bar-gastos #gastos-filtro-busca-wrap { flex: 1 1 auto !important; width: auto !important; }
+    html body #t-gastos #filter-bar-gastos .filter-group-additional { margin-left: 0 !important; flex: 0 0 auto !important; }
+}
+/* Pedidos: filtros à esquerda; Buscar à esquerda do Limpar filtros */
+@media (min-width: 901px) {
+    html body #t-pedidos #filter-bar-pedidos { display: flex !important; flex-wrap: wrap !important; align-items: flex-end !important; gap: 10px !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-group-main, html body #t-pedidos #filter-bar-pedidos .filter-group-additional { display: contents !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item { width: 180px !important; flex: 0 0 180px !important; margin: 0 !important; }
+    html body #t-pedidos #filter-bar-pedidos .filtro-busca-direita { margin-left: auto !important; flex: 0 1 300px !important; width: 300px !important; }
+    html body #t-pedidos #filter-bar-pedidos .filter-item:last-child { width: auto !important; flex: 0 0 auto !important; }
+}
+/* Horários: caixas de tamanho padrão */
+html body #t-horarios .painel-oculto { display: none !important; }
+html body #t-horarios .agenda-dias-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+html body #t-horarios .agenda-dia-caixa { display: flex; flex-direction: column; gap: 10px; height: 118px; box-sizing: border-box; padding: 14px; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label { display: flex; align-items: center; gap: 8px; font-family: 'Basic Choice', cursive; font-size: 1.1rem; color: var(--favu-green); text-transform: uppercase; margin: 0; }
+html body #t-horarios .agenda-dia-caixa .agenda-dia-label input { width: 18px; height: 18px; accent-color: var(--favu-rust); margin: 0; }
+html body #t-horarios .agenda-dia-caixa input[type="text"] { width: 100%; box-sizing: border-box; }
+html body #t-horarios .agenda-save-btn { width: 100%; }
+html body #t-horarios .agenda-datas-bloco { margin-bottom: 18px; }
+html body #t-horarios .excecoes-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+html body #t-horarios .excecoes-grade .excecao-card { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; height: 150px; box-sizing: border-box; padding: 14px; margin: 0 !important; border: 1px solid rgba(224,159,65,0.35); border-radius: 14px; background: var(--favu-card); cursor: pointer; overflow: hidden; }
+html body #t-horarios .excecoes-grade .excecao-card-resumo { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.85rem; }
+html body #t-horarios .excecoes-grade .excecao-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
+html body #t-horarios .excecoes-vazio { color: #888; font-size: 0.9rem; font-family: var(--font-numbers); margin: 0; }
+@media (max-width: 600px) {
+    html body #t-horarios .agenda-dias-grade, html body #t-horarios .excecoes-grade { grid-template-columns: 1fr; }
+}
+/* Editor do tema: botões dos blocos ocupando a linha toda, iguais */
+#modal-editor-tema .tema-areas { display: flex !important; flex-wrap: nowrap !important; gap: 6px !important; }
+#modal-editor-tema .tema-areas .prod-tab-btn { flex: 1 1 0 !important; min-width: 0; min-height: 40px; display: flex !important; align-items: center; justify-content: center; text-align: center; white-space: normal !important; line-height: 1.15; }
+@media (max-width: 600px) { #modal-editor-tema .tema-areas { flex-wrap: wrap !important; } #modal-editor-tema .tema-areas .prod-tab-btn { flex: 1 1 calc(50% - 6px) !important; } }
+/* Prévia ao vivo: Celular | Computador */
+#modal-editor-tema .previa-aparelho { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin: 0; }
+#modal-editor-tema .previa-aparelho .avisos-tab-btn { border-radius: 30px; padding: 8px 12px; font-family: 'Basic Choice', cursive; text-transform: uppercase; font-size: 0.85rem; background: #fff; color: var(--favu-green); border: 1px solid rgba(29,40,20,0.15); cursor: pointer; }
+#modal-editor-tema .previa-aparelho .avisos-tab-btn.active { background: var(--favu-green); color: #fff; }
+#modal-editor-tema .tema-previa-moldura { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 1px solid rgba(224,159,65,0.35); border-radius: 12px; background: #e9e2d6; }
+#modal-editor-tema .tema-previa-moldura #tema-previa-viva { position: absolute; top: 0; left: 0; border: none !important; border-radius: 0 !important; min-height: 0 !important; flex: none !important; background: #fff; }
+@media (max-width: 1000px) {
+    html body #modal-editor-tema .tema-editor-previa { height: 62vh !important; flex: 0 0 62vh !important; }
+    #modal-editor-tema .tema-previa-moldura { height: calc(62vh - 50px); flex: none; }
+}
 </style>
 
-<script type="module" src="./admin.js?v=20261015-pacote-12"></script>
+<script type="module" src="./admin.js?v=20261015-pacote-13"></script>
 
 
     <div id="modal-gasto-item" class="modal">

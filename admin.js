@@ -12912,7 +12912,14 @@ function regrasCssTema(valorDe) {
         if (!sel || !prop) return;
         const v = valorDe(k);
         if (!v || normCor(v) === normCor(padrao)) return;
-        regras.push(`${sel} { ${prop}: ${v} !important; }`);
+        if (/gradient\(/i.test(v) && prop === 'color') {
+            // Degradê nas letras.
+            regras.push(`${sel} { background: ${v} !important; -webkit-background-clip: text !important; background-clip: text !important; -webkit-text-fill-color: transparent !important; color: transparent !important; }`);
+        } else if (/gradient\(/i.test(v) && /border/.test(prop)) {
+            regras.push(`${sel} { border-image: ${v} 1 !important; }`);
+        } else {
+            regras.push(`${sel} { ${prop}: ${v} !important; }`);
+        }
     });
     return regras;
 }
@@ -13182,7 +13189,7 @@ window.abrirEditorTema = function(id = '') {
                 <div><label>Hora fim</label><input type="time" id="tema-agenda-fim-hora" value="${escapeHtmlPedido(agFimHora || '')}"></div>
             </div></div></div>`;
     const painelBloco = (pg, b) => {
-        if (b.agenda) return pg === 'inicio' ? `<div class="tema-bloco" data-bloco="agenda" style="display:none;">${agendaHtml}</div>` : '';
+        if (b.agenda) return `<div class="tema-bloco" data-bloco="agenda" style="display:none;">${agendaHtml}</div>`;
         return `<div class="tema-bloco" data-bloco="${pg}:${b.id}" style="display:none;">
             ${b.conteudo ? `<div class="tema-secao-rotulo">Botões e textos</div><div id="${b.conteudo}" class="tema-conteudo-pagina"></div>` : ''}
             ${b.carrossel ? `<div class="tema-secao-rotulo">Carrossel de fotos <small>(vale para todos os temas)</small></div><div id="bloco-carrossel-holder"></div>` : ''}
@@ -13192,25 +13199,26 @@ window.abrirEditorTema = function(id = '') {
     };
     modal.innerHTML = `
         <div class="modal-content tema-editor-content">
-            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
+            <div class="modal-header"><h3>${id ? 'Editar tema' : 'Novo tema'} · ${pagina === 'cardapio' ? 'Cardápio' : 'Página inicial'}</h3><button class="close-modal" onclick="window.closeModal('modal-editor-tema')">&times;</button></div>
             <div class="modal-body tema-editor-corpo">
                 <div class="tema-editor-campos">
                     <div style="margin-bottom:12px;"><label>Nome do tema</label><input type="text" id="tema-nome" value="${escapeHtmlPedido(t.nome || '')}" placeholder="Ex.: Natal 2026" ${id === 'padrao' ? 'readonly' : ''}></div>
-                    <div class="avisos-tabs tema-paginas">
-                        <button type="button" class="avisos-tab-btn" data-pagina-tema="inicio" onclick="window.trocarPaginaTema('inicio')">Página inicial</button>
-                        <button type="button" class="avisos-tab-btn" data-pagina-tema="cardapio" onclick="window.trocarPaginaTema('cardapio')">Cardápio</button>
-                    </div>
-                    ${['inicio', 'cardapio'].map(pg => `<div class="prod-tabs tema-areas" data-blocos-de="${pg}" style="display:none;">${BLOCOS_TEMA[pg].map(b => `<button type="button" class="prod-tab-btn" data-bloco-btn="${pg}:${b.id}" onclick="window.trocarBlocoTema('${b.id}')">${b.nome}</button>`).join('')}</div>`).join('')}
+                    <div class="prod-tabs tema-areas" data-blocos-de="${pagina}">${BLOCOS_TEMA[pagina].map(b => `<button type="button" class="prod-tab-btn" data-bloco-btn="${pagina}:${b.id}" onclick="window.trocarBlocoTema('${b.id}')">${b.nome}</button>`).join('')}</div>
                     <small class="tema-campo-ajuda tema-secao-ajuda">Cores com "padrão" seguem o tema Padrão. Clique em qualquer item para ver onde ele fica na prévia.</small>
-                    ${['inicio', 'cardapio'].map(pg => BLOCOS_TEMA[pg].map(b => painelBloco(pg, b)).join('')).join('')}
+                    ${BLOCOS_TEMA[pagina].map(b => painelBloco(pagina, b)).join('')}
                     <div class="tema-editor-acoes">
                         <button type="button" class="btn btn-secondary" onclick="window.closeModal('modal-editor-tema')">Cancelar</button>
                         <button type="button" class="btn btn-primary" id="btn-salvar-tema" onclick="window.salvarTema()">Salvar tema</button>
                     </div>
                 </div>
                 <div class="tema-editor-previa">
-                    <div class="tema-previa-topo"><small>Prévia ao vivo · clique num item para ver onde ele fica</small></div>
-                    <iframe id="tema-previa-viva" title="Prévia ao vivo"></iframe>
+                    <div class="tema-previa-topo">
+                        <div class="avisos-tabs previa-aparelho">
+                            <button type="button" class="avisos-tab-btn" data-aparelho-vivo="celular" onclick="window.trocarAparelhoAoVivo('celular')"><i class="fas fa-mobile-alt"></i> Celular</button>
+                            <button type="button" class="avisos-tab-btn" data-aparelho-vivo="computador" onclick="window.trocarAparelhoAoVivo('computador')"><i class="fas fa-desktop"></i> Computador</button>
+                        </div>
+                    </div>
+                    <div class="tema-previa-moldura" id="tema-previa-moldura"><iframe id="tema-previa-viva" title="Prévia ao vivo"></iframe></div>
                 </div>
             </div>
         </div>`;
@@ -13226,6 +13234,26 @@ window.abrirEditorTema = function(id = '') {
     const car = document.getElementById('secao-carrossel');
     if (holder && car) holder.appendChild(car);
     window.trocarPaginaTema(pagina);
+    window.trocarAparelhoAoVivo(window.innerWidth <= 1000 ? 'celular' : 'computador');
+};
+// Prévia como celular (390 px) ou como computador (1280 px, reduzido para caber).
+window.trocarAparelhoAoVivo = function(tipo) {
+    const moldura = document.getElementById('tema-previa-moldura'), f = iframeAoVivo();
+    if (!moldura || !f) return;
+    document.querySelectorAll('#modal-editor-tema [data-aparelho-vivo]').forEach(b => b.classList.toggle('active', b.dataset.aparelhoVivo === tipo));
+    moldura.dataset.aparelho = tipo;
+    const ajustar = () => {
+        const larg = moldura.clientWidth || 1, alt = moldura.clientHeight || 1;
+        const base = tipo === 'celular' ? 390 : 1280;
+        const escala = Math.min(1, larg / base);
+        f.style.width = `${base}px`;
+        f.style.height = `${Math.round(alt / escala)}px`;
+        f.style.transform = `scale(${escala})`;
+        f.style.transformOrigin = tipo === 'celular' && larg > base ? 'top center' : 'top left';
+        f.style.marginLeft = tipo === 'celular' && larg > base ? `${(larg - base) / 2}px` : '0';
+    };
+    ajustar();
+    if (!moldura.__ro && window.ResizeObserver) { moldura.__ro = new ResizeObserver(() => window.trocarAparelhoAoVivo(moldura.dataset.aparelho || tipo)); moldura.__ro.observe(moldura); }
 };
 function devolverCarrosselAoLayout() {
     const car = document.getElementById('secao-carrossel');
@@ -13522,7 +13550,7 @@ window.abrirSeletorCor = async function(campo, ancora) {
     window.__seletorCorCampo = campo;
     window.__seletorCorAncora = ancora;
     const def = CAMPOS_COR_TEMA.find(c => c[0] === campo);
-    const aceitaDegrade = def && def[4] === 'fundo';
+    const aceitaDegrade = true; // 2026-10-15: degradê em todas as cores
     const atual = window.__temaEdicao.cores[campo] || '#FFFFFF';
     const hexAtual = /^#/.test(atual) ? atual : '#E09F41';
     const salvas = (await carregarPaletaCores()).filter(c => aceitaDegrade || !/gradient/i.test(c));
@@ -14553,3 +14581,45 @@ function travarNomesItensTabela() {
         return r;
     };
 })();
+
+// ---------- HORÁRIOS: Atendimento | Datas específicas (2026-10-15) ----------
+window.trocarSubAbaHorarios = function(sub) {
+    document.querySelectorAll('#t-horarios [data-sub-horarios]').forEach(b => b.classList.toggle('active', b.dataset.subHorarios === sub));
+    document.querySelectorAll('#t-horarios [data-painel-horarios]').forEach(p => { p.style.display = ''; p.classList.toggle('painel-oculto', p.dataset.painelHorarios !== sub); });
+};
+// Datas ativas em cima e datas passadas embaixo, cada data na sua caixinha.
+window.renderizarExcecoesAgendaLista = function() {
+    const ativas = document.getElementById('lista-excecoes-container');
+    const passadas = document.getElementById('lista-excecoes-passadas');
+    if (!ativas) return;
+    const dados = window.cacheExcecoesAgenda || {};
+    const hoje = dataHojeAgendaKey();
+    const card = dataString => {
+        const regra = dados[dataString] || {};
+        return `<div class="excecao-card" onclick="window.editarExcecaoData('${dataString}')">
+            <div class="excecao-card-main">
+                <strong class="excecao-card-data">${formatarDataAgendaBR(dataString)}</strong>
+                <div class="excecao-card-resumo">${escapeHtmlAgenda(resumoRegraAgenda(regra))}</div>
+            </div>
+            <div class="excecao-card-actions" onclick="event.stopPropagation();">
+                <button type="button" class="btn-action edit" title="Editar" onclick="window.editarExcecaoData('${dataString}')"><i class="fas fa-pencil-alt"></i></button>
+                <button type="button" class="btn-action copy" title="Copiar" onclick="window.copiarExcecaoData('${dataString}')"><i class="fas fa-copy"></i></button>
+                <button type="button" class="btn-action del" title="Excluir" onclick="window.deletarExcecaoData('${dataString}')"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>`;
+    };
+    const lista = (filtro, ordem) => Object.keys(dados).filter(filtro).sort(ordem);
+    const at = lista(d => d >= hoje, (a, b) => a.localeCompare(b));
+    const pa = lista(d => d < hoje, (a, b) => b.localeCompare(a));
+    const vazio = msg => `<p class="excecoes-vazio">${msg}</p>`;
+    ativas.innerHTML = at.length ? at.map(card).join('') : vazio('Nenhuma data ativa.');
+    if (passadas) passadas.innerHTML = pa.length ? pa.map(card).join('') : vazio('Nenhuma data passada.');
+};
+
+// ---------- GASTOS: um botão "Exportar" (planilha na Tabela, mês na Lista) ----------
+window.exportarGastos = function() {
+    const lista = document.querySelector('#t-gastos .gastos-subtab-btn[data-subaba="lancamentos"]')?.classList.contains('active');
+    const btn = document.getElementById(lista ? 'gastos-btn-exportar-mes' : 'gastos-btn-exportar-planilha');
+    if (btn) btn.click();
+    else window.showToast('Exportação indisponível.', true);
+};
